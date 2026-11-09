@@ -13,7 +13,7 @@ val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
         decoded.substringBefore("=") to decoded.substringAfter("=", "")
     }
 val allSources = dartDefines["ALL_SOURCES"] == "true"
-val allSourcesDisplayName = dartDefines["ZHENGUOJIAN_DISPLAY_NAME"]?.trim()?.takeIf { it.isNotEmpty() } ?: "真果鉴"
+val allSourcesDisplayName = dartDefines["ZHENGUOJIAN_DISPLAY_NAME"]?.trim()?.takeIf { it.isNotEmpty() } ?: "小果影視-共存版"
 val allSourcesPackageName = System.getenv("ZHENGUOJIAN_PACKAGE_NAME")?.trim()?.takeIf { it.isNotEmpty() } ?: "com.xoman9.guo2"
 
 val releaseKey = rootProject.file(if (allSources) "key-all-sources.properties" else "key.properties")
