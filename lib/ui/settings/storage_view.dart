@@ -177,7 +177,9 @@ class _StorageViewState extends State<StorageView> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restore() async => _migrate('', '應用預設目錄');
+  Future<void> _restore() async {
+    await _migrate('', '應用預設目錄');
+  }
 
   Future<void> _setAutoExport(bool value) => saveSetting(context, () async {
     if (value && !await AppDevice.requestVideoExport()) {
