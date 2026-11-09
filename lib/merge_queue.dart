@@ -11,6 +11,7 @@ import 'core_bridge.dart';
 import 'diary_service.dart';
 import 'download_merge.dart';
 import 'media_pipeline.dart';
+import 'merge_location.dart';
 import 'models.dart';
 
 enum MergeState { queued, running, done, failed, cancelled }
@@ -221,6 +222,8 @@ Future<String> saveMerge(DownloadMerge merge, MergeTask task) async {
   try {
     final file = path.join(temporary.path, merge.fileName);
     await merge.write(file, file: file);
+    final target = await MergeLocation.saveToSelectedFolder(file, merge.fileName);
+    if (target != null) return '已保存到設定的合併輸出位置';
     await AppDevice.exportVideo(file, folder, merge.fileName);
   } finally {
     try {
