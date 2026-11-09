@@ -30,10 +30,71 @@ class StorageView extends StatefulWidget {
   State<StorageView> createState() => _StorageViewState();
 }
 
-class _StorageViewState extends State<StorageView> {
+class _StorageViewState extends State<StorageView> with WidgetsBindingObserver {
   Map<String, dynamic>? _info;
   String? _error;
   bool _loaded = false;
+  bool? _fileAccessGranted;
+  bool _requestingFileAccess = false;
+  String? _pendingMigrationParent;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkFileAccess();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkFileAccess();
+      _refresh();
+    }
+  }
+
+  Future<void> _checkFileAccess() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('duanju/device');
+      final granted =
+          await channel.invokeMethod<bool>('sharedStorageAccess') ?? false;
+      if (mounted) setState(() => _fileAccessGranted = granted);
+    } catch (error) {
+      if (mounted) setState(() => _error = '無法檢查存取授權：$error');
+    }
+  }
+
+  Future<void> _manageFileAccess() async {
+    if (!Platform.isAndroid || _requestingFileAccess) return;
+    setState(() => _requestingFileAccess = true);
+    try {
+      const channel = MethodChannel('duanju/device');
+      final granted =
+          await channel.invokeMethod<bool>('sharedStorageAccess') ?? false;
+      if (mounted) setState(() => _fileAccessGranted = granted);
+      if (!mounted) return;
+      if (granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已取得檔案存取授權')),
+        );
+        return;
+      }
+      // Android 11+: take the user to the app's All Files Access settings.
+      // On returning, didChangeAppLifecycleState refreshes authorization.
+      await channel.invokeMethod<bool>('requestSharedStorageAccess');
+    } catch (error) {
+      if (mounted) setState(() => _error = '無法開啟存取授權：$error');
+    } finally {
+      if (mounted) setState(() => _requestingFileAccess = false);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -84,12 +145,39 @@ class _StorageViewState extends State<StorageView> {
   }
 
   Future<void> _move() async {
-    final parent = await _pickParent();
-    if (parent == null || !mounted) return;
-    await _migrate(parent, parent);
+    // The native Go download manager requires an absolute filesystem path.
+    // Android's system picker resolves supported primary-storage directories.
+    String? parent;
+    try {
+      if (Platform.isAndroid) {
+        const channel = MethodChannel('duanju/device');
+        // Match 1.0.10+110: authorize shared storage before opening picker.
+        final hasAccess =
+            await channel.invokeMethod<bool>('sharedStorageAccess') ?? false;
+        if (!hasAccess) {
+          await channel.invokeMethod<bool>('requestSharedStorageAccess');
+          if (mounted) {
+            setState(() => _error =
+                '請先在系統設定允許「所有檔案存取」，返回後再次選擇下載目錄。');
+          }
+          return;
+        }
+        parent = _pendingMigrationParent ??
+            await channel.invokeMethod<String>('chooseDownloadDirectory');
+        if (parent == null || !mounted) return;
+        _pendingMigrationParent = parent;
+      } else {
+        parent = await _pickParent();
+      }
+      if (parent == null || !mounted) return;
+      final completed = await _migrate(parent, parent);
+      if (completed) _pendingMigrationParent = null;
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    }
   }
 
-  Future<void> _restore() => _migrate('', '应用默认目录');
+  Future<void> _restore() async => _migrate('', '應用預設目錄');
 
   Future<void> _setAutoExport(bool value) => saveSetting(context, () async {
     if (value && !await AppDevice.requestVideoExport()) {
@@ -98,7 +186,8 @@ class _StorageViewState extends State<StorageView> {
     await widget.store.setAutoExport(value);
   });
 
-  Future<void> _migrate(String parent, String destination) async {
+  Future<bool> _migrate(String parent, String destination) async {
+    if (!mounted) return false;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -119,7 +208,7 @@ class _StorageViewState extends State<StorageView> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) return false;
     final repository = AppScope.of(context).repository;
     final navigator = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
@@ -138,14 +227,36 @@ class _StorageViewState extends State<StorageView> {
         ),
       ),
     );
+    String? failureMessage;
     try {
       await repository.moveDownloads(parent);
+      // Refresh the actual persisted path from the native download manager.
+      await _refresh();
+      if (mounted) setState(() => _error = null);
     } catch (failure) {
-      if (mounted) setState(() => _error = '$failure');
+      failureMessage = '$failure';
+      if (mounted) setState(() => _error = failureMessage);
     } finally {
       navigator.pop();
     }
-    await _refresh();
+    if (!mounted) return failureMessage == null;
+    if (failureMessage != null) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('下載目錄遷移失敗'),
+          content: Text('$failureMessage\\n\\n原下載目錄與檔案已保留，請確認目標資料夾為空及具有存取權限。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('確定'),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+    return true;
   }
 
   @override
@@ -215,8 +326,8 @@ class _StorageViewState extends State<StorageView> {
             ),
             const Divider(indent: 16, endIndent: 16),
             SettingsTile(
-              title: '更改并迁移目录',
-              subtitle: admin ? '下载会先暂停，复制成功后清理旧目录' : '需要管理员',
+              title: '更改並遷移目錄',
+              subtitle: admin ? (Platform.isAndroid ? '從系統檔案管理員選擇資料夾，並搬移現有下載內容' : '選擇資料夾並搬移現有下載內容') : '需要管理员',
               enabled: admin,
               onTap: _move,
             ),
@@ -232,7 +343,18 @@ class _StorageViewState extends State<StorageView> {
               onTap: _restore,
             ),
             const Divider(indent: 16, endIndent: 16),
-            SettingsTile(title: '刷新用量', onTap: _refresh),
+            SettingsTile(
+              title: '存取授權',
+              subtitle: !Platform.isAndroid
+                  ? '此平台不需要 Android 檔案存取授權'
+                  : _fileAccessGranted == true
+                  ? '已授權存取共享儲存空間'
+                  : _fileAccessGranted == false
+                  ? '尚未授權，點擊前往系統設定'
+                  : '正在檢查授權狀態',
+              enabled: Platform.isAndroid && !_requestingFileAccess,
+              onTap: _manageFileAccess,
+            ),
           ],
         ),
         if (Platform.isAndroid) ...[
