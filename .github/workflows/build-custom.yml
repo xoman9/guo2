@@ -51,11 +51,11 @@ jobs:
           GOSUMDB: sum.golang.org
       - name: Set up signing; refuse unverified release
         env:
-          KS: ${ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }
-          PW: ${ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }
-          ALIAS: ${ secrets.ZHENGUOJIAN_KEY_ALIAS }
-          KEY_PW: ${ secrets.ZHENGUOJIAN_KEY_PASSWORD }
-          EXPECTED: ${ vars.ZHENGUOJIAN_CERT_SHA256 }
+          KS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
+          PW: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
         run: |
           set -euo pipefail
           for item in KS PW ALIAS KEY_PW EXPECTED; do
@@ -68,19 +68,19 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: Build arm64 and armeabi-v7a
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }
-          ANDROID_KEY_ALIAS: ${ secrets.ZHENGUOJIAN_KEY_ALIAS }
-          ANDROID_KEY_PASSWORD: ${ secrets.ZHENGUOJIAN_KEY_PASSWORD }
-          ZHENGUOJIAN_PACKAGE_NAME: ${ vars.ZHENGUOJIAN_PACKAGE_NAME }
-          ZHENGUOJIAN_DISPLAY_NAME: ${ vars.ZHENGUOJIAN_DISPLAY_NAME }
-          ZHENGUOJIAN_LATIN_NAME: ${ vars.ZHENGUOJIAN_LATIN_NAME }
-          PROJECT_URL: ${ vars.PROJECT_URL }
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+          ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
+          ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
+          ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
+          PROJECT_URL: ${{ vars.PROJECT_URL }}
           GOPROXY: https://proxy.golang.org,direct
           GOSUMDB: sum.golang.org
         run: python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a
       - name: Verify package signatures
         env:
-          EXPECTED: ${ vars.ZHENGUOJIAN_CERT_SHA256 }
+          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -102,7 +102,7 @@ jobs:
       - name: Upload APK build artifacts (no automatic release)
         uses: actions/upload-artifact@v4
         with:
-          name: guo2-custom-android-${ github.run_number }
+          name: guo2-custom-android-${{ github.run_number }}
           path: |
             dist/android/*arm64-v8a.apk
             dist/android/*armeabi-v7a.apk
