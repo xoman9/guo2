@@ -110,8 +110,8 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.GUO2_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.GUO2_KEY_PASSWORD }}
           ZHENGUOJIAN_PACKAGE_NAME: com.xoman9.guo2
-          ZHENGUOJIAN_DISPLAY_NAME: guo2
-          ZHENGUOJIAN_LATIN_NAME: Guo2
+          ZHENGUOJIAN_DISPLAY_NAME: 小果影視-共存版
+          ZHENGUOJIAN_LATIN_NAME: XiaoGuo
           PROJECT_URL: https://github.com/xoman9/guo2
           GOPROXY: https://proxy.golang.org,direct
           GOSUMDB: sum.golang.org
