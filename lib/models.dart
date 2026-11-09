@@ -15,6 +15,16 @@ class SourceSite {
       id == 'lujj31' ||
       id == 'liuguo' ||
       id == 'xiaoguo' ||
+      id == 'youguo' ||
+      id == 'meiguo' ||
+      id == 'yingguo' ||
+      id == 'luguo' ||
+      id == 'liguo' ||
+      id == 'juguo' ||
+      id == 'ningguo' ||
+      id == 'mangguo' ||
+      id == 'chengguodj' ||
+      id == 'jiaoguo' ||
       id == 'jinguoduanju' ||
       id == 'jinguo' ||
       id == 'dsd' ||
@@ -56,6 +66,16 @@ class SourceSite {
     SourceSite('lujj31', '桃果 +', '即時分類 · 詳細頁 · 線上播放'),
     SourceSite('liuguo', '榴果 +', '即時分類 · 線上播放'),
     SourceSite('xiaoguo', '宵果 +', '即時分類 · 線上搜尋與播放'),
+    SourceSite('youguo', '柚果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('meiguo', '美果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('yingguo', '櫻果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('luguo', '露果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('liguo', '荔果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('juguo', '橘果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('ningguo', '檸果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('mangguo', '芒果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('chengguodj', '橙果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('jiaoguo', '角果 +', '即時分類 · 網頁詳情與播放'),
     dsd,
     SourceSite('jinguoduanju', '禁果短剧 +', '推荐 · 分类短剧 · 在线搜索'),
     SourceSite('jinguo', '禁果 +', '精选 · 最新 · 分类短剧 · 在线搜索'),
