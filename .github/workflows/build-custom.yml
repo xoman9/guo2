@@ -1,5 +1,8 @@
 name: Build guo2 custom Android APK
 on:
+  push:
+    branches:
+      - custom
   workflow_dispatch:
   workflow_call:
 permissions:
