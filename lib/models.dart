@@ -12,6 +12,7 @@ class SourceSite {
       id == 'hongguo' ||
       id == 'huangju' ||
       id == 'yeguo' ||
+      id == 'lujj31' ||
       id == 'liuguo' ||
       id == 'xiaoguo' ||
       id == 'jinguoduanju' ||
@@ -52,6 +53,7 @@ class SourceSite {
     SourceSite('huangdou', '黄豆 +', '精选短剧'),
     SourceSite('huangju', '剧果 +', '热门 · 最新 · 分类短剧'),
     SourceSite('yeguo', '野果 +', '分类短剧 · 在线搜索'),
+    SourceSite('lujj31', '桃果 +', '即時分類 · 詳細頁 · 線上播放'),
     SourceSite('liuguo', '榴果 +', '即時分類 · 線上播放'),
     SourceSite('xiaoguo', '宵果 +', '即時分類 · 線上搜尋與播放'),
     dsd,
