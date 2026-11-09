@@ -508,7 +508,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	}
 	page := max(1, input.Page)
 	query := strings.TrimSpace(input.Query)
-	if query == "" && source != sourceLiuguo && source != sourceXiaoguo {
+	if query == "" && source != sourceLujj31 && source != sourceLujj31 && source != sourceLiuguo && source != sourceXiaoguo {
 		if retried, err := engine.retryCatalogSave(); retried {
 			cached := engine.nativeCached(cacheKey)
 			if err != nil || len(cached.Items) > 0 {
@@ -597,11 +597,13 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		result.HasMore = more
 		return result, nil
 	}
-	if query != "" && (source == sourceLiuguo || source == sourceXiaoguo) {
+	if query != "" && (source == sourceLujj31 || source == sourceLiuguo || source == sourceXiaoguo) {
         var items []Drama
         var more bool
         var err error
-        if source == sourceLiuguo {
+        if source == sourceLujj31 {
+            items, more, err = d.fetchLujj31CatalogPage(ctx, page, "", query)
+        } else if source == sourceLiuguo {
             items, more, err = d.fetchLiuguoCatalogPage(ctx, page, "", query)
         } else {
             items, more, err = d.fetchXiaoguoCatalogPage(ctx, page, "", query)
@@ -742,6 +744,8 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		items, result.HasMore, err = d.fetchGuipianCatalogPage(ctx, page, category, "")
 	case sourceHanxiaoquan:
 		items, result.HasMore, err = d.fetchHanxiaoquanCatalogPage(ctx, page, category, "")
+	case sourceLujj31:
+		items, result.HasMore, err = d.fetchLujj31CatalogPage(ctx, page, category, "")
 	case sourceLiuguo:
 		items, result.HasMore, err = d.fetchLiuguoCatalogPage(ctx, page, category, "")
 	case sourceXiaoguo:
@@ -767,7 +771,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	if err != nil && len(items) == 0 {
 		return result, err
 	}
-	if len(items) == 0 && page == 1 && source != sourceHuangju && source != sourceYeguo && source != sourceJinguoDuanju && source != sourceJinguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && source != sourceHeitao && source != sourceBeabox && source != sourceLiuguo && source != sourceXiaoguo {
+	if len(items) == 0 && page == 1 && source != sourceHuangju && source != sourceYeguo && source != sourceJinguoDuanju && source != sourceJinguo && source != sourceDSD && source != sourceSorani && source != sourceGuipian && source != sourceHanxiaoquan && source != sourceHeitao && source != sourceBeabox && source != sourceLujj31 && source != sourceLiuguo && source != sourceXiaoguo {
 		return result, errors.New("站源暂未返回剧集，请稍后刷新")
 	}
 	if err != nil {
@@ -781,7 +785,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		seen[drama.ID] = true
 		result.Items = append(result.Items, nativeNormalize(drama))
 	}
-	if source != sourceLiuguo && source != sourceXiaoguo { engine.saveCatalogCache(cacheKey, &result) }
+	if source != sourceLujj31 && source != sourceLiuguo && source != sourceXiaoguo { engine.saveCatalogCache(cacheKey, &result) }
 	return result, nil
 }
 
@@ -817,6 +821,8 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		raw, chapters, err = engine.downloader.fetchGuipianDetail(ctx, sourceID)
 	case sourceHanxiaoquan:
 		raw, chapters, err = engine.downloader.fetchHanxiaoquanDetail(ctx, sourceID)
+	case sourceLujj31:
+		raw, chapters, err = engine.downloader.fetchLujj31Detail(ctx, sourceID)
 	case sourceLiuguo:
 		raw, chapters, err = engine.downloader.fetchLiuguoDetail(ctx, sourceID)
 	case sourceXiaoguo:
