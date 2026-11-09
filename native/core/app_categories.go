@@ -35,6 +35,7 @@ func nativeCatalogKey(source, category string) string {
 
 func validNativeCategory(source, category string) bool {
 	if source == sourceXiaoguo { return validXiaoguoCategory(category) }
+	if _, ok := apk391Spec(source); ok { return apk391ValidCategory(source, category) }
 	if category == "" {
 		return true
 	}
@@ -183,6 +184,12 @@ func (engine *nativeEngine) nativeCategories(ctx context.Context, source string,
 			all = append(all, categories...)
 		}
 	default:
+		if _, ok := apk391Spec(source); ok {
+			categories, categoryErr := d.fetchApk391Categories(ctx, source)
+			err = categoryErr
+			if err == nil { all = append(all, categories...) }
+			break
+		}
 		return nil, errors.New("请选择有效站源")
 	}
 	if err != nil {
