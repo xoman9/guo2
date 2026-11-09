@@ -140,7 +140,7 @@ jobs:
               exit 1
             fi
             printf "%s\n" "$output"
-            cert=$(printf '%s\n' "$output" | sed -nE 's/^Signer #[0-9]+ certificate SHA-256 digest:[[:space:]]*//p' | head -n1 | tr -d ': ' | tr '[:upper:]' '[:lower:]')
+            cert=$(printf '%s\n' "$output" | sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*//p' | head -n1 | tr -d ': ' | tr '[:upper:]' '[:lower:]')
             if [ -z "$cert" ] && [ "$SIGNING_MODE" = "release" ]; then echo "Release fingerprint not found" >&2; exit 1; fi
             if [ "$SIGNING_MODE" = "release" ] && [ "$cert" != "$expected" ]; then
               echo "Release certificate mismatch: $apk" >&2
