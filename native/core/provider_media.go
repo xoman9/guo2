@@ -58,7 +58,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 	case sourceBeabox:
 		configured, fallback = d.cfg.BeaboxURL, beaboxBaseURL
 	default:
-		fallback = "https://d2pypzndaqisk.cloudfront.net"
+		fallback = apk391BaseURL(source)
+		if fallback == "" { fallback = "https://d2pypzndaqisk.cloudfront.net" }
 	}
 	return strings.TrimRight(firstNonEmpty(configured, fallback), "/")
 }
@@ -105,7 +106,7 @@ func providerSourceForURL(raw string) string {
 	case host == "heitaodj.com" || host == "www.heitaodj.com":
 		return sourceHeitao
 	default:
-		return ""
+		return apk391SourceForHost(host)
 	}
 }
 
@@ -120,7 +121,7 @@ func isHuangguoAIMirrorHost(host string) bool {
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
 	source := providerSourceForURL(raw)
-	if source == "" || source == sourceHuangju || source == sourceYeguo || source == sourceLujj31 || source == sourceLiuguo || source == sourceXiaoguo {
+	if source == "" || source == sourceHuangju || source == sourceYeguo || source == sourceLujj31 || source == sourceLiuguo || source == sourceXiaoguo || apk391BaseURL(source) != "" {
 		return []string{raw}
 	}
 	parsed, _ := url.Parse(raw)
@@ -179,6 +180,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceHanxiaoquan {
 		return d.resolveHanxiaoquanMedia(ctx, task)
+	}
+	if _, registered := apk391Spec(chapter.Source); registered {
+		return d.resolveApk391Media(ctx, task)
 	}
 	if chapter.Source == sourceLujj31 {
 		return d.resolveLujj31Media(ctx, task)
