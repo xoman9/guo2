@@ -1,8 +1,6 @@
 name: Sync upstream into guo2
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 19 * * *' # 03:00 Asia/Taipei
 permissions:
   contents: write
 concurrency:
