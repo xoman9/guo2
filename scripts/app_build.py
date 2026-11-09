@@ -23,7 +23,7 @@ class BuildVariant:
     def display_name(self):
         if not self.all_sources:
             return '红果鉴'
-        return os.environ.get('ZHENGUOJIAN_DISPLAY_NAME', '').strip() or '真果鉴'
+        return os.environ.get('ZHENGUOJIAN_DISPLAY_NAME', '').strip() or '小果影視-共存版'
 
     @property
     def arguments(self):
