@@ -47,6 +47,8 @@ func (d *Downloader) providerBaseURL(source string) string {
 		configured, fallback = d.cfg.GuipianURL, guipianSiteBaseURL
 	case sourceHanxiaoquan:
 		configured, fallback = d.cfg.HanxiaoquanURL, hanxiaoquanSiteBaseURL
+	case sourceLujj31:
+		fallback = lujj31BaseURL
 	case sourceLiuguo:
 		fallback = liuguoBaseURL
 	case sourceXiaoguo:
@@ -94,6 +96,8 @@ func providerSourceForURL(raw string) string {
 		return sourceGuipian
 	case host == "jennyhow.com" || host == "www.jennyhow.com":
 		return sourceHanxiaoquan
+	case host == "lujj31.lol" || host == "www.lujj31.lol":
+		return sourceLujj31
 	case host == "llsp.me" || host == "www.llsp.me":
 		return sourceLiuguo
 	case host == "yese.co" || host == "www.yese.co":
@@ -116,7 +120,7 @@ func isHuangguoAIMirrorHost(host string) bool {
 
 func (d *Downloader) providerURLCandidates(raw string) []string {
 	source := providerSourceForURL(raw)
-	if source == "" || source == sourceHuangju || source == sourceYeguo || source == sourceLiuguo || source == sourceXiaoguo {
+	if source == "" || source == sourceHuangju || source == sourceYeguo || source == sourceLujj31 || source == sourceLiuguo || source == sourceXiaoguo {
 		return []string{raw}
 	}
 	parsed, _ := url.Parse(raw)
@@ -175,6 +179,9 @@ func (d *Downloader) resolveProviderMedia(ctx context.Context, task Task) (provi
 	}
 	if chapter.Source == sourceHanxiaoquan {
 		return d.resolveHanxiaoquanMedia(ctx, task)
+	}
+	if chapter.Source == sourceLujj31 {
+		return d.resolveLujj31Media(ctx, task)
 	}
 	if chapter.Source == sourceLiuguo {
 		return d.resolveLiuguoMedia(ctx, task)
