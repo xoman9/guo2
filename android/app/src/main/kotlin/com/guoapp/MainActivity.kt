@@ -498,6 +498,38 @@ class MainActivity : FlutterActivity() {
                                 DocumentsContract.deleteDocument(contentResolver, Uri.parse(uri))
                             }.getOrDefault(false))
                         }
+                        "sharedStorageAccess", "hasDownloadFileAccess" -> {
+                            result.success(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                Environment.isExternalStorageManager()
+                            } else {
+                                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                                    PackageManager.PERMISSION_GRANTED
+                            })
+                        }
+                        "requestSharedStorageAccess", "requestDownloadFileAccess" -> {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                if (Environment.isExternalStorageManager()) {
+                                    result.success(true)
+                                } else {
+                                    try {
+                                        startActivity(Intent(
+                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                            Uri.parse("package:$packageName")
+                                        ))
+                                        result.success(false)
+                                    } catch (error: Exception) {
+                                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                        result.success(false)
+                                    }
+                                }
+                            } else if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                                PackageManager.PERMISSION_GRANTED) {
+                                result.success(true)
+                            } else {
+                                requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 9812)
+                                result.success(false)
+                            }
+                        }
                         "requestVideoExport" -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
                                 checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
