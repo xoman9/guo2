@@ -1,0 +1,65 @@
+name: Sync upstream into guo2
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Asia/Taipei
+permissions:
+  contents: write
+concurrency:
+  group: guo2-upstream-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      changed: ${ steps.merge.outputs.changed }
+    steps:
+      - name: Checkout repository with complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fetch and integrate upstream safely
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add source https://github.com/Xanerix/guoapp.git
+          git fetch source main
+          git fetch origin upstream custom
+          old_upstream=$(git rev-parse origin/upstream)
+          new_upstream=$(git rev-parse source/main)
+          before_custom=$(git rev-parse origin/custom)
+          if ! git merge-base --is-ancestor "$old_upstream" "$new_upstream"; then
+            echo 'Upstream history changed non-fast-forward. Manual review required.' >&2
+            exit 1
+          fi
+          if [ "$old_upstream" != "$new_upstream" ]; then
+            git push origin "$new_upstream:refs/heads/upstream"
+            echo "Updated upstream: $old_upstream -> $new_upstream" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          git checkout -B custom origin/custom
+          if ! git merge --no-edit source/main; then
+            git merge --abort || true
+            echo 'Merge conflict: custom untouched. Resolve manually.' >&2
+            exit 1
+          fi
+          after_custom=$(git rev-parse HEAD)
+          if [ "$before_custom" = "$after_custom" ]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Custom already up to date; no build requested.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            git push origin HEAD:refs/heads/custom
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            echo "Updated custom: $before_custom -> $after_custom" >> "$GITHUB_STEP_SUMMARY"
+          fi
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-custom.yml
+    secrets: inherit
