@@ -28,13 +28,6 @@ class SourceBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final form = AppScope.formFactorOf(context);
     final hint = '在 $source 中搜索';
-    final switcher = Builder(
-      builder: (anchor) => BarButton(
-        icon: Icons.public_rounded,
-        tooltip: '切换站源',
-        onPressed: () => onSwitchSource(anchor),
-      ),
-    );
     final search = BarButton(
       icon: Icons.search_rounded,
       tooltip: hint,
@@ -43,13 +36,13 @@ class SourceBar extends StatelessWidget {
     return switch (form) {
       FormFactor.phone => PageHeader(
         title: source,
-        actions: [switcher, search, ...actions],
+        onTitleTap: onSwitchSource,
+        actions: [search, ...actions],
       ),
       FormFactor.pad || FormFactor.window => PageHeader(
         title: source,
+        onTitleTap: onSwitchSource,
         actions: [
-          switcher,
-          const SizedBox(width: 4),
           SizedBox(
             width: MediaQuery.sizeOf(context).width >= 900 ? 320 : 240,
             child: SearchField(
@@ -69,11 +62,25 @@ class SourceBar extends StatelessWidget {
           children: [
             ?televisionLeading,
             const Spacer(),
-            Text(
-              source,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            Builder(
+              builder: (anchor) => InkWell(
+                onTap: () => onSwitchSource(anchor),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        source,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            switcher,
             search,
             ...actions,
           ],
