@@ -1,0 +1,113 @@
+name: Build guo2 custom Android APK
+on:
+  push:
+    branches:
+      - custom
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: guo2-custom-android-build
+  cancel-in-progress: false
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout custom branch (never main/upstream)
+        uses: actions/checkout@v4
+        with:
+          ref: custom
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+          accept-android-sdk-licenses: true
+      - name: Install project NDK
+        run: sdkmanager 'ndk;28.2.13676358'
+      - name: Verify dependencies and code
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile
+          dart analyze --fatal-infos lib test
+          flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+          (cd native && go test ./...)
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+      - name: Set up signing; refuse unverified release
+        env:
+          KS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
+          PW: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for item in KS PW ALIAS KEY_PW EXPECTED; do
+            if [ -z "${!item}" ]; then
+              echo "Missing signing value: $item; refusing debug-signed release." >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Build arm64 and armeabi-v7a
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+          ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
+          ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
+          ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
+          PROJECT_URL: ${{ vars.PROJECT_URL }}
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a
+      - name: Verify package signatures
+        env:
+          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(dist/android/*arm64-v8a.apk dist/android/*armeabi-v7a.apk)
+          if [ "${#apks[@]}" -ne 2 ]; then
+            echo "Expected exactly two ABI APKs, got ${#apks[@]}" >&2
+            exit 1
+          fi
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)
+          test -n "$signer"
+          expected=$(printf '%s' "$EXPECTED" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
+          for apk in "${apks[@]}"; do
+            cert=$("$signer" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ': ' | tr '[:upper:]' '[:lower:]')
+            if [ "$cert" != "$expected" ]; then
+              echo "Certificate mismatch: $apk" >&2
+              exit 1
+            fi
+          done
+      - name: Upload APK build artifacts (no automatic release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: guo2-custom-android-${{ github.run_number }}
+          path: |
+            dist/android/*arm64-v8a.apk
+            dist/android/*armeabi-v7a.apk
+          retention-days: 14
+          if-no-files-found: error
