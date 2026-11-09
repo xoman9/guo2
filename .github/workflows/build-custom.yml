@@ -81,14 +81,14 @@ jobs:
         env:
           GOPROXY: https://proxy.golang.org,direct
           GOSUMDB: sum.golang.org
-      - name: Configure signing (test fallback when no secrets)
+      - name: Configure permanent guo2 signing
         id: signing
         env:
-          KS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
-          PW: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
-          ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
-          KEY_PW: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
-          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          KS: ${{ secrets.GUO2_KEYSTORE_BASE64 }}
+          PW: ${{ secrets.GUO2_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.GUO2_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.GUO2_KEY_PASSWORD }}
+          EXPECTED: ${{ vars.GUO2_CERT_SHA256 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -96,33 +96,29 @@ jobs:
           for item in KS PW ALIAS KEY_PW EXPECTED; do
             if [ -n "${!item}" ]; then present=$((present + 1)); fi
           done
-          if [ "$present" -eq 0 ]; then
-            echo "mode=test" >> "$GITHUB_OUTPUT"
-            echo "No signing credentials configured. Building test-only APK with the runner's temporary Android debug certificate. Updates may require uninstalling the previous APK." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$present" -eq 5 ]; then
-            printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "mode=release" >> "$GITHUB_OUTPUT"
-            echo "Using configured release signing credentials." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Incomplete release signing configuration ($present of 5). Refusing to downgrade to a test certificate." >&2
+          if [ "$present" -ne 5 ]; then
+            echo "::error::Missing guo2 permanent signing settings ($present/5 configured). Run the one-time private keystore setup; never fall back to random debug signing."
             exit 1
           fi
+          printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/guo2-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/guo2-release.jks" >> "$GITHUB_ENV"
+          echo "mode=release" >> "$GITHUB_OUTPUT"
+          echo "Using permanent guo2 signing key." >> "$GITHUB_STEP_SUMMARY"
       - name: Build arm64 and armeabi-v7a
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
-          ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
-          ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
-          ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
-          PROJECT_URL: ${{ vars.PROJECT_URL }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GUO2_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.GUO2_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.GUO2_KEY_PASSWORD }}
+          ZHENGUOJIAN_PACKAGE_NAME: com.xoman9.guo2
+          ZHENGUOJIAN_DISPLAY_NAME: guo2
+          ZHENGUOJIAN_LATIN_NAME: Guo2
+          PROJECT_URL: https://github.com/xoman9/guo2
           GOPROXY: https://proxy.golang.org,direct
           GOSUMDB: sum.golang.org
         run: python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a
       - name: Verify package signatures
         env:
-          EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          EXPECTED: ${{ vars.GUO2_CERT_SHA256 }}
           SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         shell: bash
         run: |
