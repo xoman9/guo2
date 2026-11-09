@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../app_device.dart';
 import '../../core_bridge.dart';
 import '../../local_store.dart';
+import '../../merge_location.dart';
 import '../app_scope.dart';
 import '../widgets/focus_ring.dart';
 import '../widgets/group_card.dart';
@@ -37,12 +38,14 @@ class _StorageViewState extends State<StorageView> with WidgetsBindingObserver {
   bool? _fileAccessGranted;
   bool _requestingFileAccess = false;
   String? _pendingMigrationParent;
+  String? _mergeTreeUri;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkFileAccess();
+    _loadMergeLocation();
   }
 
   @override
@@ -94,6 +97,29 @@ class _StorageViewState extends State<StorageView> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _requestingFileAccess = false);
     }
+  }
+
+  Future<void> _loadMergeLocation() async {
+    try {
+      final uri = await MergeLocation.current();
+      if (mounted) setState(() => _mergeTreeUri = uri);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    }
+  }
+
+  Future<void> _chooseMergeLocation() async {
+    try {
+      final uri = await MergeLocation.choose();
+      if (uri != null && mounted) setState(() => _mergeTreeUri = uri);
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    }
+  }
+
+  Future<void> _clearMergeLocation() async {
+    await MergeLocation.clear();
+    if (mounted) setState(() => _mergeTreeUri = null);
   }
 
   @override
@@ -360,6 +386,28 @@ class _StorageViewState extends State<StorageView> with WidgetsBindingObserver {
           ],
         ),
         if (Platform.isAndroid) ...[
+          const SizedBox(height: 16),
+          GroupCard(
+            children: [
+              SettingsTile(
+                title: '合併輸出位置',
+                subtitle: _mergeTreeUri == null
+                    ? '每次合併使用 Movies 資料夾；可設定固定輸出位置'
+                    : '已設定固定輸出資料夾（Android SAF 授權）',
+                enabled: admin,
+                onTap: _chooseMergeLocation,
+              ),
+              if (_mergeTreeUri != null) ...[
+                const Divider(indent: 16, endIndent: 16),
+                SettingsTile(
+                  title: '清除合併位置',
+                  subtitle: '恢復原本的 Movies 輸出方式',
+                  enabled: admin,
+                  onTap: _clearMergeLocation,
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 16),
           ListenableBuilder(
             listenable: widget.store,
