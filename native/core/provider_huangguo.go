@@ -98,7 +98,8 @@ func isHuangguoProviderSource(source string) bool {
 	case sourceHuangguoAI, sourceHuangguoVideo, sourceHuangdou, sourceHongguo, sourceHuangju, sourceYeguo, sourceJinguoDuanju, sourceJinguo, sourceDSD, sourceCloudFront, sourceSorani, sourceGuipian, sourceHanxiaoquan, sourceHeitao, sourceBeabox, sourceLujj31, sourceLiuguo, sourceXiaoguo:
 		return true
 	default:
-		return false
+		_, registered := apk391Spec(source)
+		return registered
 	}
 }
 
@@ -145,6 +146,7 @@ func canonicalProviderSource(source string) string {
 	case "beabox":
 		return sourceBeabox
 	default:
+		if id := apk391SourceForHost(trimmed); id != "" { return id }
 		return strings.TrimSpace(source)
 	}
 }
