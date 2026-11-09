@@ -179,7 +179,12 @@ void main() {
 
   test('build edition names match the source list', () {
     expect(appSlug, allSourcesEnabled ? 'zhenguojian' : 'hongguojian');
-    expect(appName, allSourcesEnabled ? '真果鉴' : '红果鉴');
+    expect(
+      appName,
+      allSourcesEnabled
+          ? const String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME', defaultValue: '小果影視-共存版')
+          : '红果鉴',
+    );
     expect(
       SourceSite.values.map((site) => site.id),
       allSourcesEnabled
