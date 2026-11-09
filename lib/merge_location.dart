@@ -26,6 +26,23 @@ class MergeLocation {
     await (await SharedPreferences.getInstance()).remove(_key);
   }
 
+  static Future<String?> saveToSelectedFolder(String sourceFile, String name) async {
+    final uri = await createDocument(name);
+    if (uri == null) return null;
+    try {
+      await _device.invokeMethod<void>('copyFileToDocument', {
+        'source': sourceFile,
+        'uri': uri,
+      });
+      return uri;
+    } catch (_) {
+      try {
+        await _device.invokeMethod<bool>('deleteDocument', {'uri': uri});
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
   static Future<String?> createDocument(String name) async {
     final tree = await current();
     if (tree == null) return null;
