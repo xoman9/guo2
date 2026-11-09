@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      changed: ${ steps.merge.outputs.changed }
+      changed: ${{ steps.merge.outputs.changed }}
     steps:
       - name: Checkout repository with complete history
         uses: actions/checkout@v4
