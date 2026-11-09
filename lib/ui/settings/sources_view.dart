@@ -41,15 +41,8 @@ class _SourcesViewState extends State<SourcesView> {
       final store = widget.store;
       final admin = store.profile.admin;
       final repository = AppScope.of(context).repository;
-      const legacyHiddenIds = <String>{
-        'dsd', 'huangdou', 'huangju', 'yeguo',
-        'huangguo-video', 'huangguoai', 'cloudfront',
-        'jinguoduanju', 'jinguo',
-        'liuguo', 'xiaoguo', 'youguo', 'meiguo', 'yingguo',
-        'luguo', 'liguo', 'juguo', 'ningguo', 'mangguo',
-        'chengguodj', 'jiaoguo',
-      };
-      final hidden = SourceSite.values.where((s) => legacyHiddenIds.contains(s.id)).toList();
+      final hidden = SourceSite.restrictedValues
+          .where((site) => SourceSite.isAvailable(site.id)).toList();
       final hiddenOff = hidden.every((s) => !store.sourceEnabled(s.id));
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
