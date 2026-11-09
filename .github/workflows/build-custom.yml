@@ -52,23 +52,33 @@ jobs:
         env:
           GOPROXY: https://proxy.golang.org,direct
           GOSUMDB: sum.golang.org
-      - name: Set up signing; refuse unverified release
+      - name: Configure signing (test fallback when no secrets)
+        id: signing
         env:
           KS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
           PW: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
           ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
           KEY_PW: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
           EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+        shell: bash
         run: |
           set -euo pipefail
+          present=0
           for item in KS PW ALIAS KEY_PW EXPECTED; do
-            if [ -z "${!item}" ]; then
-              echo "Missing signing value: $item; refusing debug-signed release." >&2
-              exit 1
-            fi
+            if [ -n "${!item}" ]; then present=$((present + 1)); fi
           done
-          printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          if [ "$present" -eq 0 ]; then
+            echo "mode=test" >> "$GITHUB_OUTPUT"
+            echo "No signing credentials configured. Building test-only APK with the runner's temporary Android debug certificate. Updates may require uninstalling the previous APK." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$present" -eq 5 ]; then
+            printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo "Using configured release signing credentials." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Incomplete release signing configuration ($present of 5). Refusing to downgrade to a test certificate." >&2
+            exit 1
+          fi
       - name: Build arm64 and armeabi-v7a
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
@@ -84,6 +94,8 @@ jobs:
       - name: Verify package signatures
         env:
           EXPECTED: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -92,20 +104,23 @@ jobs:
             echo "Expected exactly two ABI APKs, got ${#apks[@]}" >&2
             exit 1
           fi
-          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           test -n "$signer"
           expected=$(printf '%s' "$EXPECTED" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
           for apk in "${apks[@]}"; do
-            cert=$("$signer" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ': ' | tr '[:upper:]' '[:lower:]')
-            if [ "$cert" != "$expected" ]; then
-              echo "Certificate mismatch: $apk" >&2
+            output=$("$signer" verify --print-certs "$apk")
+            cert=$(printf '%s\n' "$output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1 | tr -d ': ' | tr '[:upper:]' '[:lower:]')
+            test -n "$cert"
+            if [ "$SIGNING_MODE" = "release" ] && [ "$cert" != "$expected" ]; then
+              echo "Release certificate mismatch: $apk" >&2
               exit 1
             fi
+            echo "$(basename "$apk"): $SIGNING_MODE signature SHA-256=$cert" >> "$GITHUB_STEP_SUMMARY"
           done
       - name: Upload APK build artifacts (no automatic release)
         uses: actions/upload-artifact@v4
         with:
-          name: guo2-custom-android-${{ github.run_number }}
+          name: guo2-custom-${{ steps.signing.outputs.mode }}-android-${{ github.run_number }}
           path: |
             dist/android/*arm64-v8a.apk
             dist/android/*armeabi-v7a.apk
