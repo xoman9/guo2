@@ -151,7 +151,7 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		if err != nil {
 			return errors.New("无法打开所选目录")
 		}
-		target = filepath.Join(filepath.Clean(resolved), "zhenguojian-downloads")
+		target = filepath.Clean(resolved)
 	}
 	manager := engine.downloads
 	engine.mu.Lock()
@@ -177,9 +177,18 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		manager.mu.Unlock()
 		return errors.New("新目录不能与原下载目录互相包含")
 	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
+	// The selected directory itself is the download root. Accept an existing
+	// empty folder, but never overwrite unrelated files or directories.
+	targetExists := false
+	if entries, err := os.ReadDir(target); err == nil {
+		targetExists = true
+		if len(entries) != 0 {
+			manager.mu.Unlock()
+			return errors.New("所選資料夾不是空的，請選擇空資料夾以免覆蓋原有檔案")
+		}
+	} else if !os.IsNotExist(err) {
 		manager.mu.Unlock()
-		return errors.New("目标中已有应用下载目录，请选择空目录，避免覆盖文件")
+		return errors.New("無法讀取所選資料夾，請檢查存取權限")
 	}
 	manager.moving = true
 	for id, job := range manager.jobs {
@@ -200,15 +209,24 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		return saveErr
 	}
 	source := manager.root
-	if err := os.Mkdir(target, 0700); err != nil {
-		return errors.New("无法创建目标目录，请检查权限或选择其他位置")
+	if !targetExists {
+		if err := os.Mkdir(target, 0700); err != nil {
+			return errors.New("無法建立目標資料夾，請檢查存取權限")
+		}
+	}
+	// Never delete a folder selected by the user. A failed copy can leave
+	// partial files there; the original download folder remains untouched.
+	cleanupNewTarget := func() {
+		if !targetExists {
+			_ = os.RemoveAll(target)
+		}
 	}
 	if err := nativeCopyTree(ctx, source, target); err != nil {
-		_ = os.RemoveAll(target)
-		return errors.New("文件迁移未完成，原文件已保留，请检查空间与目录权限")
+		cleanupNewTarget()
+		return errors.New("檔案遷移未完成，原檔案已保留；請檢查空間並清除目標資料夾內未完成的檔案後再試")
 	}
 	if err := ctx.Err(); err != nil {
-		_ = os.RemoveAll(target)
+		cleanupNewTarget()
 		return err
 	}
 	location := filepath.Join(engine.directory, "download-location.json")
@@ -222,8 +240,8 @@ func (engine *nativeEngine) moveDownloads(ctx context.Context, parent string) er
 		persistErr = nativeDownloadWrite(location, data)
 	}
 	if persistErr != nil {
-		_ = os.RemoveAll(target)
-		return errors.New("保存下载目录失败，原文件已保留")
+		cleanupNewTarget()
+		return errors.New("保存下載目錄失敗，原檔案已保留")
 	}
 	manager.root = target
 	_ = os.RemoveAll(source)
