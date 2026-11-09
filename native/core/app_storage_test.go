@@ -41,6 +41,12 @@ func TestDownloadMigrationPreservesMediaAndRestartLocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	location := nativeDownloadLocation(engine.directory, engine.defaultDownloads)
+	if location != filepath.Clean(target) {
+		t.Fatalf("download root %q should be the selected folder %q without an extra subfolder", location, target)
+	}
+	if _, err := os.Stat(filepath.Join(target, "zhenguojian-downloads")); !os.IsNotExist(err) {
+		t.Fatalf("unexpected zhenguojian-downloads directory created: %v", err)
+	}
 	if location != engine.downloads.root || location == old {
 		t.Fatal("new location was not persisted")
 	}
@@ -58,6 +64,29 @@ func TestDownloadMigrationPreservesMediaAndRestartLocation(t *testing.T) {
 	defer restarted.close()
 	if len(restarted.jobs) != 1 || restarted.jobs[id].State != "completed" {
 		t.Fatal("restart lost jobs")
+	}
+}
+
+
+func TestDownloadMigrationRejectsNonEmptyChosenFolder(t *testing.T) {
+	engine, id := storageFixture(t)
+	original := engine.downloads.root
+	target := t.TempDir()
+	sentinel := filepath.Join(target, "keep-me.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.moveDownloads(context.Background(), target); err == nil {
+		t.Fatal("expected error when chosen folder contains existing files")
+	}
+	if engine.downloads.root != original {
+		t.Fatal("download directory changed despite rejected migration")
+	}
+	if body, err := os.ReadFile(sentinel); err != nil || string(body) != "keep" {
+		t.Fatalf("existing file was modified: %v", err)
+	}
+	if body, err := os.ReadFile(filepath.Join(original, id, "media.mp4")); err != nil || string(body) != "synthetic-video" {
+		t.Fatalf("original media lost: %v", err)
 	}
 }
 
