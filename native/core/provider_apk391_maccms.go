@@ -95,7 +95,7 @@ func liaoguoMetaRefreshTarget(doc *nethtml.Node, current string) string {
   if err!=nil || seconds<0 || seconds>5{continue}
   directive:=strings.TrimSpace(segments[1])
   if len(directive)<4 || !strings.EqualFold(directive[:4],"url="){continue}
-  address:=strings.Trim(strings.TrimSpace(directive[4:])," \\"'")
+  address:=strings.TrimSpace(directive[4:])
   if address==""{continue}
   next:=apk391SameSite("liaoguo",address)
   if next!="" && next!=current{return next}
