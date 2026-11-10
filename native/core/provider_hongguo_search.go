@@ -194,7 +194,9 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		return false
 	})
 	if pageErr != nil {
-		entry.Warning = "红果综合搜索暂不可用，已保留名称匹配结果，可重试"
+		entry.Warning = "新版與舊版紅果搜尋接口均未成功，目前僅顯示名稱匹配結果；請檢查網路或站源驗證"
+	} else if page.Warning != "" {
+		entry.Warning = page.Warning
 	} else if namesErr != nil {
 		entry.Warning = "红果名称检索暂不可用，结果可能缺少部分剧集，可重试"
 	}
@@ -321,7 +323,17 @@ func (downloader *Downloader) fetchHongguoSearchPageCompat(ctx context.Context, 
 	cancel()
 	if err == nil { return result, nil }
 	if ctx.Err() != nil { return hongguoSearchEntry{}, ctx.Err() }
-	return downloader.fetchHongguoSearchPage(ctx, keyword, pageNum)
+	legacy, legacyErr := downloader.fetchHongguoSearchPage(ctx, keyword, pageNum)
+	if legacyErr == nil {
+		// The legacy endpoint supplied a valid result. Preserve it, but mark
+		// the APK 0.2.536 route as not yet working on this device.
+		legacy.Warning = "新版紅果搜尋接口未成功，已使用舊版搜尋結果"
+		return legacy, nil
+	}
+	return hongguoSearchEntry{}, errors.Join(
+		errors.New("新版紅果搜尋接口未通過，舊版接口亦失敗"),
+		err, legacyErr,
+	)
 }
 
 // 0.2.536's Go binary exposes the newer search/page/v endpoint.
