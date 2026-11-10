@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -19,6 +20,11 @@ func TestNativeSuggestionsOfficialContract(t *testing.T) {
 	engine := &nativeEngine{downloader: &Downloader{
 		limiter: newRequestLimiter(1, 0),
 		client: &http.Client{Timeout: time.Second, Transport: suggestionTransport(func(request *http.Request) (*http.Response, error) {
+			// The 0.2.536 cue endpoint attempts device registration first.
+			// A registration failure must not disable the older working suggestion API.
+			if request.URL.Host == "log.snssdk.com" && strings.HasPrefix(request.URL.Path, "/service/2/device_register/") {
+				return nil, errors.New("device registration unavailable in fixture")
+			}
 			if request.URL.Host != "hongguoduanju.com" || request.URL.Path != "/incent_resource/suggestion" ||
 				request.URL.Query().Get("query") != "永 & 世" || request.URL.Query().Get("app_id") != "8662" ||
 				request.URL.Query().Get("count") != "10" || request.Header.Get("Cookie") != "" {
