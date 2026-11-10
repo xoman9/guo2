@@ -162,14 +162,7 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]Drama{}, names)})
 	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
 	defer cancel()
-	apkCtx, apkCancel := context.WithTimeout(pageCtx, 5*time.Second)
-	page, pageErr := downloader.fetchHongguoApkSearchPage(apkCtx, keyword, 1)
-	apkCancel()
-	if pageErr != nil {
-		// The new endpoint may reject a legacy device or change its schema.
-		// Reserve time for the original endpoint instead of exhausting all 12s.
-		page, pageErr = downloader.fetchHongguoSearchPage(pageCtx, keyword, 1)
-	}
+	page, pageErr := downloader.fetchHongguoSearchPageCompat(pageCtx, keyword, 1)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
@@ -320,6 +313,17 @@ func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, t
 	return ""
 }
 
+// Prefer the search/page route discovered in 0.2.536 for every page.
+ // Fall back to search/tab only if the new route fails or its schema changes.
+func (downloader *Downloader) fetchHongguoSearchPageCompat(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
+	apkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	result, err := downloader.fetchHongguoApkSearchPage(apkCtx, keyword, pageNum)
+	cancel()
+	if err == nil { return result, nil }
+	if ctx.Err() != nil { return hongguoSearchEntry{}, ctx.Err() }
+	return downloader.fetchHongguoSearchPage(ctx, keyword, pageNum)
+}
+
 // 0.2.536's Go binary exposes the newer search/page/v endpoint.
 // The binary does not expose an authoritative response schema, so accept only
 // validated series IDs and fall back to the older tab endpoint on schema errors.
@@ -361,6 +365,14 @@ func (downloader *Downloader) fetchHongguoApkSearchPage(ctx context.Context, key
 		"count": {strconv.Itoa(hongguoSearchPageSize)},
 		"tab_type": {hongguoSearchSeriesTab},
 	}
+	if pageNum > 1 {
+		query.Set("passback", strconv.Itoa((pageNum - 1) * hongguoSearchPageSize))
+		client := downloader.hongguoClient()
+		client.mu.Lock()
+		searchID := client.searchIDs[keyword]
+		client.mu.Unlock()
+		if searchID != "" { query.Set("search_id", searchID) }
+	}
 	response, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoApkSearchPagePath, query, nil)
 	if err != nil {
 		return hongguoSearchEntry{}, err
@@ -371,7 +383,15 @@ func (downloader *Downloader) fetchHongguoApkSearchPage(ctx context.Context, key
 	if len(items) == 0 {
 		return hongguoSearchEntry{}, errors.New("新版红果搜索接口未返回可识别的短剧")
 	}
-	return hongguoSearchEntry{Dramas: items, Total: len(items), HasMore: len(items) >= hongguoSearchPageSize}, nil
+	if id := mapString(response, "search_id"); id != "" && pageNum == 1 {
+		client := downloader.hongguoClient()
+		client.mu.Lock()
+		client.searchIDs[keyword] = id
+		client.mu.Unlock()
+	}
+	more := len(items) >= hongguoSearchPageSize
+	if value, ok := response["has_more"].(bool); ok { more = value }
+	return hongguoSearchEntry{Dramas: items, Total: len(items), HasMore: more}, nil
 }
 
 func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
