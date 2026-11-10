@@ -67,3 +67,19 @@ Go `.gopclntab` 中可還原的共用函式：
 4. 實機比對同關鍵字與分類的影片 ID、片名、封面及分頁。請求／回應樣本不得包含可用 Cookie、授權碼或識別碼。
 
 **結論**：這次完成的是有函式呼叫證據的靜態分析，尚未等效實作。不可再宣稱單純調整超時或入口就是搜尋／撩果修復。
+
+
+## 2026-11-11：新增指令層級確認（優先於前述推測）
+
+利用 ARM64 指令和 Go `.gopclntab` 還原 `hongguoAppSearchPage`（`0x344bfb0–0x344c720`）的真實參數組裝，確認其直接呼叫 `hongguoAppModernRequestTo` 時：
+
+- HTTP method：`GET`（指令所引用的常數 `0x4a79b9`，長度 3）。
+- endpoint：**`/reading/bookapi/search/tab/v`**（常數 `0x4e880e`，長度 29，無結尾 `/`）。
+- `query`、`offset`、`count`、`tab_type`、`client_req_type`、`selector` 均被放入查詢參數。
+- `tab_type` 常數值為 `29`，`client_req_type` 為 `2`。
+- `selector` 是長度 92 的 JSON 字串：`[{"selector_item_id":"content_type_short_play","show_name":"真人剧","value":"真人剧"}]`。
+- 回傳結果使用 `search_tabs` 鍵，並呼叫 `hongguoAppCollectRows`，該函式引用 `video_data` 鍵。
+
+**重要更正：先前認為 APK 的 `hongguoAppSearchPage` 以 `/reading/bookapi/search/page/v/` 為主要路由是錯誤的。** `page/v/` 雖是原生庫中的字串，但沒有證明為這個函式所使用。guo2 已將第一優先請求改回經指令確認的 `search/tab/v`，並加上 `selector` 及 `client_req_type`。原 APK 的 `hongguoAppModernRequestTo` 與現有 `hongguoAppRequest` 在裝置註冊、HTTP 簽章或客戶端選擇方面是否完全等同，仍未確認；仍須實際回應或實機測試。
+
+撩果方面，`followMaccmsChallenge` 確實由 `fetchMaccmsCatalogPage` 呼叫，包含 regexp、同站網址處理與 HTML 解析；但未證實它會操作 `challengeStore` 或完成 Cloudflare／互動式驗證。原 APK 亦包含其他站源使用的 `cf_clearance` 字串，**不能直接歸因於撩果**。
