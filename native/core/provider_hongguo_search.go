@@ -451,17 +451,23 @@ func (downloader *Downloader) fetchHongguoApkSearchPage(ctx context.Context, key
 	return hongguoSearchEntry{Dramas: items, Total: len(items), HasMore: more}, nil
 }
 
+// Extracted from APK 0.2.536 ARM64 hongguoAppSearchPage (0x344bfb0):
+// GET search/tab/v, query/offset/count/tab_type/client_req_type/selector.
+func hongguo0536SearchQuery(keyword, offset string) url.Values {
+ return url.Values{
+  "query": {keyword},
+  "offset": {offset},
+  "count": {strconv.Itoa(hongguoSearchPageSize)},
+  "tab_type": {hongguoSearchSeriesTab},
+  "client_req_type": {"2"},
+  "selector": {`[{"selector_item_id":"content_type_short_play","show_name":"真人剧","value":"真人剧"}]`},
+ }
+}
+
 func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
 	client := downloader.hongguoClient()
 	offset := strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)
-	query := url.Values{
-		"query": {keyword},
-		"offset": {offset},
-		"count": {strconv.Itoa(hongguoSearchPageSize)},
-		"tab_type": {hongguoSearchSeriesTab},
-		"client_req_type": {"2"},
-		"selector": {`[{"selector_item_id":"content_type_short_play","show_name":"真人剧","value":"真人剧"}]`},
-	}
+	query := hongguo0536SearchQuery(keyword, offset)
 	if pageNum > 1 {
 		query.Set("passback", offset)
 		client.mu.Lock()
