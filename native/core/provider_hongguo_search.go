@@ -165,14 +165,27 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	pageCtx, cancel := context.WithTimeout(ctx, 18*time.Second)
 	defer cancel()
 	page, pageErr := downloader.fetchHongguoSearchPageCompat(pageCtx, keyword, 1)
+	catalogMatches := []Drama{}
+	if pageErr != nil && ctx.Err() == nil {
+		// APK 0.2.536's hongguoAppSearchFallback calls the actual category
+		// catalog, not another search/tab request. Fetch only the short-play
+		// category with a bounded timeout and filter it by the user's title.
+		fallbackCtx, fallbackCancel := context.WithTimeout(ctx, 8*time.Second)
+		fallbackRows, fallbackErr := downloader.fetchHongguoAppCatalogCategory(fallbackCtx, "short_play")
+		fallbackCancel()
+		if fallbackErr == nil {
+			catalogMatches = hongguoSearchCatalogMatches(fallbackRows, keyword)
+			reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: catalogMatches})
+		}
+	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
 	if pageErr != nil && namesErr != nil || len(page.Dramas)+len(names) == 0 && (pageErr != nil || namesErr != nil) {
 		return hongguoSearchEntry{}, errors.Join(pageErr, namesErr)
 	}
-	entry := hongguoSearchEntry{Dramas: make([]Drama, 0, len(page.Dramas)+len(names)), Total: page.Total, HasMore: page.HasMore}
-	for _, batch := range [][]Drama{page.Dramas, names} {
+	entry := hongguoSearchEntry{Dramas: make([]Drama, 0, len(page.Dramas)+len(names)+len(catalogMatches)), Total: page.Total, HasMore: page.HasMore}
+	for _, batch := range [][]Drama{page.Dramas, names, catalogMatches} {
 		entry.Dramas = mergeHongguoSearchDramas(entry.Dramas, batch)
 	}
 	reportHongguoSearchProgress(ctx, entry)
@@ -196,7 +209,11 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		return false
 	})
 	if pageErr != nil {
-		entry.Warning = "新版與舊版紅果搜尋均失敗：" + hongguoPublicSearchReason(pageErr) + "；目前僅有名稱匹配結果"
+		if len(catalogMatches) > 0 {
+			entry.Warning = "搜尋接口失敗，已從紅果分類目錄補充片名匹配結果（不是完整搜尋）"
+		} else {
+			entry.Warning = "新版與舊版紅果搜尋均失敗：" + hongguoPublicSearchReason(pageErr) + "；目前僅有名稱匹配結果"
+		}
 	} else if page.Warning != "" {
 		entry.Warning = page.Warning
 	} else if namesErr != nil {
@@ -236,6 +253,20 @@ func hongguoPublicSearchReason(err error) string {
  default:
   return "連線或接口發生其他錯誤"
  }
+}
+
+// Matches real catalog entries, never manufactures titles or drama IDs.
+// APK fallback also consults catalog data, but its full ranking is not
+// recoverable from the available static disassembly.
+func hongguoSearchCatalogMatches(rows []Drama, keyword string) []Drama {
+	matches := make([]Drama, 0, min(len(rows), 50))
+	for _, drama := range rows {
+		if drama.ID == "" || strings.TrimSpace(drama.DisplayTitle()) == "" { continue }
+		if hongguoTitleSearchRank(drama.DisplayTitle(), keyword) > 3 { continue }
+		matches = append(matches, drama)
+		if len(matches) >= 50 { break }
+	}
+	return mergeHongguoSearchDramas([]Drama{}, matches)
 }
 
 func mergeHongguoSearchDramas(dramas, batch []Drama) []Drama {
