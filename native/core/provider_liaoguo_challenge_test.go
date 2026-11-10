@@ -1,6 +1,10 @@
 package core
 
-import "testing"
+import (
+ "strings"
+ "testing"
+ nethtml "golang.org/x/net/html"
+)
 
 func TestApk391BrowserChallengeIsNotParsedAsCatalog(t *testing.T) {
   for _, challenge := range []string{
@@ -22,4 +26,21 @@ func TestApk391BrowserChallengeIsNotParsedAsCatalog(t *testing.T) {
       t.Fatalf("normal catalogue misclassified as challenge: %q", normal)
     }
   }
+}
+
+func TestLiaoguoRefreshFollowsOnlySafeSameSite(t *testing.T) {
+ cases:=[]struct{html, expected string}{
+  {`<html><head><meta http-equiv="refresh" content="0;url=/vodtype/19.html"></head></html>`,
+   "https://aeg.xslrxx.mom/vodtype/19.html"},
+  {`<html><head><meta http-equiv="refresh" content="0;url=https://other.example/"></head></html>`, ""},
+  {`<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head></html>`, ""},
+  {`<html><head><meta http-equiv="refresh" content="10;url=/vodtype/19.html"></head></html>`, ""},
+ }
+ for _,tc:=range cases {
+  doc,err:=nethtml.Parse(strings.NewReader(tc.html))
+  if err!=nil{t.Fatal(err)}
+  if got:=liaoguoMetaRefreshTarget(doc,"https://aeg.xslrxx.mom/");got!=tc.expected {
+   t.Fatalf("refresh target %q, expected %q",got,tc.expected)
+  }
+ }
 }
