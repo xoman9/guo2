@@ -61,12 +61,30 @@ func apk391ValidCategory(source,category string)bool {
  return apk391Numeric.MatchString(category)
 }
 
+// Recognize challenge/verification pages as an explicit failure, never as
+// film listings or category pages. Does not try to defeat the site's challenge.
+func apk391BrowserChallengeText(text string) bool {
+ value:=strings.ToLower(strings.Join(strings.Fields(text)," "))
+ for _,needle:=range []string{
+  "站点要求浏览器验证","站點要求瀏覽器驗證",
+  "当前请求无法通过","當前請求無法通過",
+  "checking your browser before accessing",
+  "verify you are human","just a moment...",
+ } {
+  if strings.Contains(value,needle) {return true}
+ }
+ return false
+}
+
 func (d *Downloader) apk391Page(ctx context.Context,source,path string)(*nethtml.Node,string,error){
  link:=apk391SameSite(source,path)
  if link==""{return nil,"",errors.New("非法或跨站页面")}
  base:=apk391BaseURL(source)
  doc,actual,err:=d.fetchProviderPage(ctx,link,base+"/",lujj31UserAgent)
  if err!=nil{return nil,"",err}
+ if source=="liaoguo" && apk391BrowserChallengeText(providerHTMLText(doc)) {
+  return nil,"",errors.New("撩果網站要求瀏覽器驗證；可至設定中的「開啟站點驗證」使用正常瀏覽器。網站與 APP 的工作階段可能不同，無法保證自動解鎖")
+ }
  if len(providerHTMLNodes(doc,func(n *nethtml.Node)bool{return n.Data=="body"&&n.FirstChild!=nil}))==0{
   return nil,"",errors.New("网页未返回有效正文")
  }
