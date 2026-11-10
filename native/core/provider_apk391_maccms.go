@@ -637,23 +637,6 @@ func (d *Downloader) fetchApk391CatalogPage(ctx context.Context,source string,pa
   return nil,false,fmt.Errorf("%s 原生 %s 目录 API 尚未恢复，不会用其他来源假冒",spec.Name,spec.Kind)
  }
  routes:=[]string{}
- if source=="liaoguo" && query=="" {
-  // The 0.2.536 source host differs from the legacy MacCMS host. Only
-  // request an actual category URL advertised by that source's homepage.
-  if page>1 {return []Drama{},false,nil} // pagination route remains unverified
-  home,_,err:=d.apk391Page(ctx,source,"/")
-  if err!=nil{return nil,false,err}
-  doc:=home
-  if category!="" {
-   address:=liaoguoCategoryLink(home,category)
-   if address=="" {return nil,false,errors.New("撩果網站未提供此分類的有效連結，尚未確認 APK 分類對應")}
-   doc,_,err=d.apk391Page(ctx,source,address)
-   if err!=nil{return nil,false,err}
-  }
-  items:=d.apk391EnrichSuspects(ctx,source,doc,apk391Cards(doc,source))
-  if len(items)==0{return nil,false,errors.New("撩果目前頁面沒有可核實的影片，不會顯示其他站源內容")}
-  return items,false,nil
- }
  if (source=="jiaoguo" || source=="zhenguo") && query=="" {
   // Verified 0.2.391 Jiaoguo website: homepage has no video cards;
   // /index.php/vod/type/... returns 404, /vod/ returns 500.
