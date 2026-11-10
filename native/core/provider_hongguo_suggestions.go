@@ -108,7 +108,50 @@ func (d *Downloader) hongguoSearchSuggestions(ctx context.Context, query string)
 	}
 }
 
+// 0.2.536 contains a separate search/cue/v1 path. Its response layout may
+// vary by server build, so accept only bounded, nonempty text suggestions.
+const hongguoApkSearchCuePath = "/reading/bookapi/search/cue/v1/"
+
+func hongguoApkCueItems(node any, depth int, out *[]hongguoSearchSuggestion, seen map[string]bool) {
+	if depth > 7 || len(*out) >= hongguoSuggestionLimit { return }
+	switch value := node.(type) {
+	case []any:
+		for _, item := range value { hongguoApkCueItems(item, depth+1, out, seen) }
+	case map[string]any:
+		name := mapString(value, "word", "name", "keyword", "text", "search_word")
+		if name != "" {
+			if normalized, err := hongguoSearchKeyword(name); err == nil {
+				key := strings.ToLower(normalized)
+				if !seen[key] {
+					seen[key] = true
+					*out = append(*out, hongguoSearchSuggestion{Name: normalized, Type: mapString(value, "word_type", "type")})
+				}
+			}
+		}
+		for _, key := range []string{"data", "result", "results", "list", "items", "cues", "cue_list", "search_cues", "suggest_list", "words", "suggestions"} {
+			if next, ok := value[key]; ok { hongguoApkCueItems(next, depth+1, out, seen) }
+		}
+	}
+}
+
+func (d *Downloader) fetchHongguoApkCueSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
+	params := url.Values{"query": {query}, "count": {strconv.Itoa(hongguoSuggestionLimit)}}
+	result, err := d.hongguoAppRequest(ctx, http.MethodGet, hongguoApkSearchCuePath, params, nil)
+	if err != nil { return nil, err }
+	items := make([]hongguoSearchSuggestion, 0, hongguoSuggestionLimit)
+	hongguoApkCueItems(result, 0, &items, make(map[string]bool))
+	if len(items) == 0 { return nil, errors.New("新版紅果搜尋提示沒有可識別內容") }
+	return items, nil
+}
+
 func (d *Downloader) fetchHongguoSearchSuggestions(ctx context.Context, query string) ([]hongguoSearchSuggestion, error) {
+	// First try the APK cue endpoint; retain the old suggestion service
+	// if a server version does not expose a compatible cue response.
+	cueCtx, cueCancel := context.WithTimeout(ctx, 2*time.Second)
+	cues, cueErr := d.fetchHongguoApkCueSuggestions(cueCtx, query)
+	cueCancel()
+	if cueErr == nil && len(cues) > 0 { return cues, nil }
+	if ctx.Err() != nil { return nil, ctx.Err() }
 	records, err := d.fetchHongguoSuggestionRecords(ctx, query, hongguoSuggestionLimit)
 	if err != nil {
 		return nil, err
