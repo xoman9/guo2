@@ -17,6 +17,7 @@ var apk391Sources = []apk391SourceSpec{
   {"mangguo","芒果","maccms","zsrenqi.xyz"},
   {"chengguodj","橙果","web","chengguodj.com"},
   {"jiaoguo","角果","maccms","haijiao126.cc"},
+  {"liaoguo","撩果","maccms","xslrxx.mom"},
 }
 
 var apk391ByID = func() map[string]apk391SourceSpec {
