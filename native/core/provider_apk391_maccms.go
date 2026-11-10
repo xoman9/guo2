@@ -76,12 +76,45 @@ func apk391BrowserChallengeText(text string) bool {
  return false
 }
 
+// Follow at most one ordinary same-site HTML refresh on Liaoguo. This is
+// navigation, not a browser challenge bypass: user-interactive verification
+// and cookies remain the responsibility of a legitimate browser session.
+func liaoguoMetaRefreshTarget(doc *nethtml.Node, current string) string {
+ for _,node:=range providerHTMLNodes(doc,func(n *nethtml.Node)bool{return n.Data=="meta"}) {
+  equiv, content := "", ""
+  for _,attribute:=range node.Attr {
+   switch strings.ToLower(attribute.Key) {
+   case "http-equiv": equiv=attribute.Val
+   case "content": content=attribute.Val
+   }
+  }
+  if !strings.EqualFold(strings.TrimSpace(equiv),"refresh"){continue}
+  segments:=strings.SplitN(content,";",2)
+  if len(segments)!=2{continue}
+  seconds,err:=strconv.ParseFloat(strings.TrimSpace(segments[0]),64)
+  if err!=nil || seconds<0 || seconds>5{continue}
+  directive:=strings.TrimSpace(segments[1])
+  if len(directive)<4 || !strings.EqualFold(directive[:4],"url="){continue}
+  address:=strings.Trim(strings.TrimSpace(directive[4:])," \\"'")
+  if address==""{continue}
+  next:=apk391SameSite("liaoguo",address)
+  if next!="" && next!=current{return next}
+ }
+ return ""
+}
+
 func (d *Downloader) apk391Page(ctx context.Context,source,path string)(*nethtml.Node,string,error){
  link:=apk391SameSite(source,path)
  if link==""{return nil,"",errors.New("非法或跨站页面")}
  base:=apk391BaseURL(source)
  doc,actual,err:=d.fetchProviderPage(ctx,link,base+"/",lujj31UserAgent)
  if err!=nil{return nil,"",err}
+ if source=="liaoguo" {
+  if next:=liaoguoMetaRefreshTarget(doc,link);next!="" {
+   doc,actual,err=d.fetchProviderPage(ctx,next,link,lujj31UserAgent)
+   if err!=nil{return nil,"",err}
+  }
+ }
  if source=="liaoguo" && apk391BrowserChallengeText(providerHTMLText(doc)) {
   return nil,"",errors.New("撩果網站要求瀏覽器驗證；可至設定中的「開啟站點驗證」使用正常瀏覽器。網站與 APP 的工作階段可能不同，無法保證自動解鎖")
  }
