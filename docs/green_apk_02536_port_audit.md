@@ -83,3 +83,19 @@ Go `.gopclntab` 中可還原的共用函式：
 **重要更正：先前認為 APK 的 `hongguoAppSearchPage` 以 `/reading/bookapi/search/page/v/` 為主要路由是錯誤的。** `page/v/` 雖是原生庫中的字串，但沒有證明為這個函式所使用。guo2 已將第一優先請求改回經指令確認的 `search/tab/v`，並加上 `selector` 及 `client_req_type`。原 APK 的 `hongguoAppModernRequestTo` 與現有 `hongguoAppRequest` 在裝置註冊、HTTP 簽章或客戶端選擇方面是否完全等同，仍未確認；仍須實際回應或實機測試。
 
 撩果方面，`followMaccmsChallenge` 確實由 `fetchMaccmsCatalogPage` 呼叫，包含 regexp、同站網址處理與 HTML 解析；但未證實它會操作 `challengeStore` 或完成 Cloudflare／互動式驗證。原 APK 亦包含其他站源使用的 `cf_clearance` 字串，**不能直接歸因於撩果**。
+
+
+### 撩果 followMaccmsChallenge 的實際指令呼叫順序
+
+本次核對 `0x3403590–0x3403730`（Go 原生庫中的 `(*Downloader).followMaccmsChallenge`），直接調用如下：
+
+1. `fetchProviderText`：讀取首個頁面原文。
+2. 若文字長度大於 `0x800`（2048），停止匹配跳轉。
+3. `regexp.(*Regexp).FindStringSubmatch`：從原文取第一個捕獲分組。
+4. `strings.TrimSpace`、`duanjuAbsolute`：將捕獲的 URL 正規化為完整位址。
+5. `isProviderHTTPMediaURL`：檢查 URL 是否可接受。
+6. 再次 `fetchProviderText`，然後 `html.ParseWithOptions` 解析返回內容。
+
+該函式**沒有直接呼叫** `challengeStore`、`cookieHeader`、`challengeJar.Cookies` 或 WebView。這是一次限制內的文本跳轉／跟隨處理，而非已確認的 Cookie 驗證流程。APK 確實包含另一些工作階段函式，但無法據此推定撩果會使用或可跨網域轉存驗證狀態。
+
+guo2 先前新增的 HTML meta-refresh 跟隨與 APK 這裡使用的 `regexp.FindStringSubmatch` **不能宣稱是等效移植**。完整實作仍需判定 regex 本身的原文、可接受 URL 範圍，以及哪類站源實際會呼叫這個分支。
