@@ -25,6 +25,7 @@ class SourceSite {
       id == 'mangguo' ||
       id == 'chengguodj' ||
       id == 'jiaoguo' ||
+      id == 'liaoguo' ||
       id == 'jinguoduanju' ||
       id == 'jinguo' ||
       id == 'dsd' ||
@@ -76,6 +77,7 @@ class SourceSite {
     SourceSite('mangguo', '芒果 +', '即時分類 · 網頁詳情與播放'),
     SourceSite('chengguodj', '橙果 +', '即時分類 · 網頁詳情與播放'),
     SourceSite('jiaoguo', '角果 +', '即時分類 · 網頁詳情與播放'),
+    SourceSite('liaoguo', '撩果 +', '實驗性網頁站源 · 待驗證'),
     dsd,
     SourceSite('jinguoduanju', '禁果短剧 +', '推荐 · 分类短剧 · 在线搜索'),
     SourceSite('jinguo', '禁果 +', '精选 · 最新 · 分类短剧 · 在线搜索'),
