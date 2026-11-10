@@ -162,9 +162,12 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]Drama{}, names)})
 	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
 	defer cancel()
-	page, pageErr := downloader.fetchHongguoApkSearchPage(pageCtx, keyword, 1)
+	apkCtx, apkCancel := context.WithTimeout(pageCtx, 5*time.Second)
+	page, pageErr := downloader.fetchHongguoApkSearchPage(apkCtx, keyword, 1)
+	apkCancel()
 	if pageErr != nil {
-		// Keep the previous tab API as a compatibility fallback.
+		// The new endpoint may reject a legacy device or change its schema.
+		// Reserve time for the original endpoint instead of exhausting all 12s.
 		page, pageErr = downloader.fetchHongguoSearchPage(pageCtx, keyword, 1)
 	}
 	if errors.Is(ctx.Err(), context.Canceled) {
