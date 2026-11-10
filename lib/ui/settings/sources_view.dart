@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../local_store.dart';
 import '../../models.dart';
@@ -83,6 +84,23 @@ class _SourcesViewState extends State<SourcesView> {
                 ),
             ],
           ),
+          if (SourceSite.isAvailable('liaoguo')) ...[
+            const SizedBox(height: 12),
+            SettingsCard(
+              children: [
+                ListTile(
+                  key: const ValueKey('liaoguo-open-verification-site'),
+                  leading: const Icon(Icons.open_in_browser_rounded),
+                  title: const Text('撩果 +：開啟站點驗證'),
+                  subtitle: const Text(
+                    '使用系統瀏覽器開啟站點並依網站要求自行驗證。'
+                    '瀏覽器與 APP 的網路工作階段可能不同，完成驗證不保證站源自動解鎖。',
+                  ),
+                  onTap: () => openLiaoguoVerificationSite(context),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           const _Note(
             '关闭的站源不在发现、搜索、追剧、观看记录和下载中显示，记录保留，重新开启后恢复。正在下载的集会暂停，重新开启后可在下载页继续。',
@@ -114,6 +132,27 @@ class SourceAccountsView extends StatelessWidget {
       );
     },
   );
+}
+
+const liaoguoOfficialSite = 'https://aeg.xslrxx.mom/';
+
+Future<void> openLiaoguoVerificationSite(BuildContext context) async {
+  final uri = Uri.parse(liaoguoOfficialSite);
+  try {
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('無法開啟撩果網站，請檢查是否有可用瀏覽器')),
+        );
+      }
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('無法開啟網站，請檢查網路與瀏覽器設定')),
+      );
+    }
+  }
 }
 
 class _SourceTile extends StatelessWidget {
