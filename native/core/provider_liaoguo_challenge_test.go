@@ -31,7 +31,7 @@ func TestApk391BrowserChallengeIsNotParsedAsCatalog(t *testing.T) {
 func TestLiaoguoRefreshFollowsOnlySafeSameSite(t *testing.T) {
  cases:=[]struct{html, expected string}{
   {`<html><head><meta http-equiv="refresh" content="0;url=/vodtype/19.html"></head></html>`,
-   "https://aeg.xslrxx.mom/vodtype/19.html"},
+   "https://xslrxx.mom/vodtype/19.html"},
   {`<html><head><meta http-equiv="refresh" content="0;url=https://other.example/"></head></html>`, ""},
   {`<html><head><meta http-equiv="refresh" content="0;url=javascript:alert(1)"></head></html>`, ""},
   {`<html><head><meta http-equiv="refresh" content="10;url=/vodtype/19.html"></head></html>`, ""},
@@ -39,7 +39,7 @@ func TestLiaoguoRefreshFollowsOnlySafeSameSite(t *testing.T) {
  for _,tc:=range cases {
   doc,err:=nethtml.Parse(strings.NewReader(tc.html))
   if err!=nil{t.Fatal(err)}
-  if got:=liaoguoMetaRefreshTarget(doc,"https://aeg.xslrxx.mom/");got!=tc.expected {
+  if got:=liaoguoMetaRefreshTarget(doc,"https://xslrxx.mom/");got!=tc.expected {
    t.Fatalf("refresh target %q, expected %q",got,tc.expected)
   }
  }
