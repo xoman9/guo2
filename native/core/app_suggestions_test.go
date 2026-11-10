@@ -25,6 +25,15 @@ func TestNativeSuggestionsOfficialContract(t *testing.T) {
 			if request.URL.Host == "log.snssdk.com" && strings.HasPrefix(request.URL.Path, "/service/2/device_register/") {
 				return nil, errors.New("device registration unavailable in fixture")
 			}
+			if request.URL.Host == "api5-normal-sinfonlineb.fqnovel.com" && request.URL.Path == hongguoApkSearchCuePath {
+				if request.URL.Query().Get("query") != "永 & 世" || request.URL.Query().Get("count") != "10" {
+					t.Fatalf("unexpected APK cue query: %s", request.URL)
+				}
+				// Simulate a supported HTTP response with no recognizable cues.
+				// The legacy suggestion service must still provide results.
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{},
+					Body: io.NopCloser(strings.NewReader(`{"data":{"cue_list":[]}}`)), Request: request}, nil
+			}
 			if request.URL.Host != "hongguoduanju.com" || request.URL.Path != "/incent_resource/suggestion" ||
 				request.URL.Query().Get("query") != "永 & 世" || request.URL.Query().Get("app_id") != "8662" ||
 				request.URL.Query().Get("count") != "10" || request.Header.Get("Cookie") != "" {
