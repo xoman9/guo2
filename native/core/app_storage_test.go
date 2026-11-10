@@ -280,7 +280,16 @@ func TestPathsOverlapAllowsSiblingsAndOtherVolumes(t *testing.T) {
 
 func TestMigrationRejectsContainmentAndSymbolicLinks(t *testing.T) {
 	engine, _ := storageFixture(t)
-	if err := engine.moveDownloads(context.Background(), engine.downloads.root); err == nil {
+	// Selecting the current root is an intentional no-op. A subdirectory of
+	// the root must still be rejected to prevent recursive self-copy.
+	if err := engine.moveDownloads(context.Background(), engine.downloads.root); err != nil {
+		t.Fatalf("selecting current download root should be a no-op: %v", err)
+	}
+	nested := filepath.Join(engine.downloads.root, "nested")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.moveDownloads(context.Background(), nested); err == nil {
 		t.Fatal("nested destination accepted")
 	}
 	outside := t.TempDir()
