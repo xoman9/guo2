@@ -65,3 +65,19 @@ func TestHongguoSearchCatalogMatchesRealTitlesOnly(t *testing.T) {
 		t.Fatal("unrelated catalog titles must not appear in fallback")
 	}
 }
+
+func TestHongguo0536SearchQueryMatchesBinaryContract(t *testing.T) {
+ q:=hongguo0536SearchQuery("永 & 世","10")
+ want:=map[string]string{
+  "query":"永 & 世",
+  "offset":"10",
+  "count":"10",
+  "tab_type":"29",
+  "client_req_type":"2",
+  "selector":`[{"selector_item_id":"content_type_short_play","show_name":"真人剧","value":"真人剧"}]`,
+ }
+ if len(q)!=len(want) { t.Fatalf("unexpected search keys: %#v",q) }
+ for k,value:=range want {
+  if q.Get(k)!=value {t.Fatalf("key %s: got %q, want %q",k,q.Get(k),value)}
+ }
+}
