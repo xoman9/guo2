@@ -162,7 +162,11 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]Drama{}, names)})
 	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
 	defer cancel()
-	page, pageErr := downloader.fetchHongguoSearchPage(pageCtx, keyword, 1)
+	page, pageErr := downloader.fetchHongguoApkSearchPage(pageCtx, keyword, 1)
+	if pageErr != nil {
+		// Keep the previous tab API as a compatibility fallback.
+		page, pageErr = downloader.fetchHongguoSearchPage(pageCtx, keyword, 1)
+	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
@@ -311,6 +315,60 @@ func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, t
 		}
 	}
 	return ""
+}
+
+// 0.2.536's Go binary exposes the newer search/page/v endpoint.
+// The binary does not expose an authoritative response schema, so accept only
+// validated series IDs and fall back to the older tab endpoint on schema errors.
+const hongguoApkSearchPagePath = "/reading/bookapi/search/page/v/"
+
+func hongguoApkSearchVideoRows(node any, depth int, out *[]Drama) {
+	if depth > 9 || len(*out) >= 100 {
+		return
+	}
+	switch value := node.(type) {
+	case []any:
+		for _, row := range value {
+			hongguoApkSearchVideoRows(row, depth+1, out)
+		}
+	case map[string]any:
+		id := mapString(value, "series_id_str", "series_id")
+		if hongguoNumericID.MatchString(id) {
+			drama := hongguoDramaFromAny(map[string]any{"video_data": value}, "短剧")
+			if drama.ID != "" && drama.DisplayTitle() != drama.SourceID {
+				*out = append(*out, drama)
+				return
+			}
+		}
+		for _, key := range []string{"search_tabs", "search_tab", "data", "list", "items", "result", "results", "video_data", "series_list", "book_list", "cell_list", "content"} {
+			if nested, ok := value[key]; ok {
+				hongguoApkSearchVideoRows(nested, depth+1, out)
+			}
+		}
+	}
+}
+
+func (downloader *Downloader) fetchHongguoApkSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
+	if pageNum < 1 || pageNum > 1000 {
+		return hongguoSearchEntry{}, errors.New("红果搜索页码无效")
+	}
+	query := url.Values{
+		"query": {keyword},
+		"offset": {strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)},
+		"count": {strconv.Itoa(hongguoSearchPageSize)},
+		"tab_type": {hongguoSearchSeriesTab},
+	}
+	response, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoApkSearchPagePath, query, nil)
+	if err != nil {
+		return hongguoSearchEntry{}, err
+	}
+	var candidates []Drama
+	hongguoApkSearchVideoRows(response, 0, &candidates)
+	items := mergeHongguoSearchDramas([]Drama{}, candidates)
+	if len(items) == 0 {
+		return hongguoSearchEntry{}, errors.New("新版红果搜索接口未返回可识别的短剧")
+	}
+	return hongguoSearchEntry{Dramas: items, Total: len(items), HasMore: len(items) >= hongguoSearchPageSize}, nil
 }
 
 func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
