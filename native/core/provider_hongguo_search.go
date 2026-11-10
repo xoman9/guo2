@@ -196,7 +196,7 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		return false
 	})
 	if pageErr != nil {
-		entry.Warning = "新版與舊版紅果搜尋接口均未成功，目前僅顯示名稱匹配結果；請檢查網路或站源驗證"
+		entry.Warning = "新版與舊版紅果搜尋均失敗：" + hongguoPublicSearchReason(pageErr) + "；目前僅有名稱匹配結果"
 	} else if page.Warning != "" {
 		entry.Warning = page.Warning
 	} else if namesErr != nil {
@@ -212,6 +212,30 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		entry.Total = len(entry.Dramas)
 	}
 	return entry, nil
+}
+
+// Report only the class of failure, never a request URL, cookie or device ID.
+func hongguoPublicSearchReason(err error) string {
+ if err == nil { return "" }
+ reason := strings.ToLower(err.Error())
+ switch {
+ case errors.Is(err, context.DeadlineExceeded), strings.Contains(reason, "deadline exceeded"), strings.Contains(reason, "timeout"):
+  return "伺服器回應逾時"
+ case strings.Contains(reason, "http 403"), strings.Contains(reason, "http 401"):
+  return "HTTP 401/403：伺服器拒絕請求"
+ case strings.Contains(reason, "http 404"):
+  return "HTTP 404：搜尋接口不存在"
+ case strings.Contains(reason, "http 429"):
+  return "HTTP 429：請求受到限制"
+ case strings.Contains(reason, "设备注册失败"), strings.Contains(reason, "device registration"):
+  return "裝置註冊失敗"
+ case strings.Contains(reason, "未返回有效结果"), strings.Contains(reason, "未返回可识别"), strings.Contains(reason, "返回格式异常"):
+  return "回傳格式或影片欄位無法識別"
+ case strings.Contains(reason, "暂不可用（"), strings.Contains(reason, "接口暂不可用"):
+  return "伺服器拒絕搜尋接口（業務錯誤碼）"
+ default:
+  return "連線或接口發生其他錯誤"
+ }
 }
 
 func mergeHongguoSearchDramas(dramas, batch []Drama) []Drama {
