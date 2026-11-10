@@ -181,7 +181,7 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return hongguoSearchEntry{}, ctx.Err()
 	}
-	if pageErr != nil && namesErr != nil || len(page.Dramas)+len(names) == 0 && (pageErr != nil || namesErr != nil) {
+	if len(page.Dramas)+len(names)+len(catalogMatches) == 0 && (pageErr != nil || namesErr != nil) {
 		return hongguoSearchEntry{}, errors.Join(pageErr, namesErr)
 	}
 	entry := hongguoSearchEntry{Dramas: make([]Drama, 0, len(page.Dramas)+len(names)+len(catalogMatches)), Total: page.Total, HasMore: page.HasMore}
