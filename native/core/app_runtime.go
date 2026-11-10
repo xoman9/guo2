@@ -800,6 +800,18 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	return result, nil
 }
 
+// Tao-guo detail pages sometimes report a generic player/navigation heading.
+// If the selected catalog item has a meaningful title for this same ID,
+// retain it in detail/player/watch metadata without changing playback URLs.
+func nativeLujj31CatalogTitleValid(title, sourceID string) bool {
+ title = strings.TrimSpace(title)
+ if title == "" || title == "短剧" || title == "短劇" ||
+  title == "影片 "+sourceID || title == "影片" || title == "桃果" {
+  return false
+ }
+ return true
+}
+
 func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama) (any, error) {
 	source, sourceID, valid := splitProviderDramaID(drama.ID)
 	if !valid {
@@ -859,7 +871,13 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		drama.Title = title
 	}
 	if raw.ID == drama.ID {
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+		fresh := nativeNormalize(raw)
+		// Keep the catalog title for the exact same Tao-guo ID. Detail pages
+		// may have a player heading rather than the real film name.
+		if source == sourceLujj31 && nativeLujj31CatalogTitleValid(drama.Title, sourceID) {
+			fresh.Title = drama.Title
+		}
+		drama = mergeNativeDrama(drama, fresh)
 	}
 	if source == sourceHongguo {
 		raw := engine.downloader.hongguoCachedDrama(Drama{ID: drama.ID, Title: drama.Title, Source: source})
