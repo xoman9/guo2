@@ -375,22 +375,10 @@ func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, t
 // Prefer the search/page route discovered in 0.2.536 for every page.
  // Fall back to search/tab only if the new route fails or its schema changes.
 func (downloader *Downloader) fetchHongguoSearchPageCompat(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
-	apkCtx, cancel := context.WithTimeout(ctx, 9*time.Second)
-	result, err := downloader.fetchHongguoApkSearchPage(apkCtx, keyword, pageNum)
-	cancel()
-	if err == nil { return result, nil }
-	if ctx.Err() != nil { return hongguoSearchEntry{}, ctx.Err() }
-	legacy, legacyErr := downloader.fetchHongguoSearchPage(ctx, keyword, pageNum)
-	if legacyErr == nil {
-		// The legacy endpoint supplied a valid result. Preserve it, but mark
-		// the APK 0.2.536 route as not yet working on this device.
-		legacy.Warning = "新版紅果搜尋接口未成功，已使用舊版搜尋結果"
-		return legacy, nil
-	}
-	return hongguoSearchEntry{}, errors.Join(
-		errors.New("新版紅果搜尋接口未通過，舊版接口亦失敗"),
-		err, legacyErr,
-	)
+	// APK 0.2.536 hongguoAppSearchPage uses GET search/tab/v (not
+	// search/page/v). Its exact selector is embedded in the ARM64 binary.
+	// Do not put an unverified endpoint in front of the real APK route.
+	return downloader.fetchHongguoSearchPage(ctx, keyword, pageNum)
 }
 
 // 0.2.536's Go binary exposes the newer search/page/v endpoint.
@@ -466,7 +454,14 @@ func (downloader *Downloader) fetchHongguoApkSearchPage(ctx context.Context, key
 func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
 	client := downloader.hongguoClient()
 	offset := strconv.Itoa((pageNum - 1) * hongguoSearchPageSize)
-	query := url.Values{"query": {keyword}, "offset": {offset}, "count": {strconv.Itoa(hongguoSearchPageSize)}, "tab_type": {hongguoSearchSeriesTab}}
+	query := url.Values{
+		"query": {keyword},
+		"offset": {offset},
+		"count": {strconv.Itoa(hongguoSearchPageSize)},
+		"tab_type": {hongguoSearchSeriesTab},
+		"client_req_type": {"2"},
+		"selector": {`[{"selector_item_id":"content_type_short_play","show_name":"真人剧","value":"真人剧"}]`},
+	}
 	if pageNum > 1 {
 		query.Set("passback", offset)
 		client.mu.Lock()
@@ -476,7 +471,8 @@ func (downloader *Downloader) fetchHongguoSearchPage(ctx context.Context, keywor
 			query.Set("search_id", searchID)
 		}
 	}
-	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, hongguoSearchTabPath, query, nil)
+	// Original APK references the 29-byte path without a trailing slash.
+	result, err := downloader.hongguoAppRequest(ctx, http.MethodGet, "/reading/bookapi/search/tab/v", query, nil)
 	if err != nil {
 		return hongguoSearchEntry{}, err
 	}
