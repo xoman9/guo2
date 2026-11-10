@@ -800,6 +800,17 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 	return result, nil
 }
 
+// A meaningful catalog title is more reliable for Tao-guo than the loose
+// headings on some playback/detail pages. Preserve it only for the same ID.
+func nativeLujj31CatalogTitleValid(title, sourceID string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" || title == "短剧" || title == "短劇" ||
+		title == "影片 "+sourceID || title == "影片" || title == "桃果" {
+		return false
+	}
+	return true
+}
+
 func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama) (any, error) {
 	source, sourceID, valid := splitProviderDramaID(drama.ID)
 	if !valid {
@@ -859,7 +870,14 @@ func (engine *nativeEngine) nativeDetail(ctx context.Context, drama nativeDrama)
 		drama.Title = title
 	}
 	if raw.ID == drama.ID {
-		drama = mergeNativeDrama(drama, nativeNormalize(raw))
+		fresh := nativeNormalize(raw)
+		// Tao-guo pages can expose a navigation or player heading instead of
+		// the selected film title. The catalog title belongs to this exact ID;
+		// retain it for details, player headers, and saved watch metadata.
+		if source == sourceLujj31 && nativeLujj31CatalogTitleValid(drama.Title, sourceID) {
+			fresh.Title = drama.Title
+		}
+		drama = mergeNativeDrama(drama, fresh)
 	}
 	if source == sourceHongguo {
 		raw := engine.downloader.hongguoCachedDrama(Drama{ID: drama.ID, Title: drama.Title, Source: source})
