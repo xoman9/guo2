@@ -49,3 +49,19 @@ func TestHongguoApkCueExtractsUniqueSuggestions(t *testing.T) {
 		t.Fatalf("unexpected cue names: %+v", items)
 	}
 }
+
+func TestHongguoSearchCatalogMatchesRealTitlesOnly(t *testing.T) {
+	rows := []Drama{
+		{ID: "hongguo:100", Source: sourceHongguo, Title: "星河之約"},
+		{ID: "hongguo:101", Source: sourceHongguo, Title: "冬日旅行"},
+		{ID: "hongguo:102", Source: sourceHongguo, Title: "星河之約 第二季"},
+		{ID: "hongguo:100", Source: sourceHongguo, Title: "星河之約"},
+	}
+	matched := hongguoSearchCatalogMatches(rows, "星河")
+	if len(matched) != 2 || matched[0].ID != "hongguo:100" || matched[1].ID != "hongguo:102" {
+		t.Fatalf("expected two distinct matching catalog dramas, got %+v", matched)
+	}
+	if len(hongguoSearchCatalogMatches(rows, "不存在的片名")) != 0 {
+		t.Fatal("unrelated catalog titles must not appear in fallback")
+	}
+}
