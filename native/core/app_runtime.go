@@ -531,7 +531,7 @@ func (engine *nativeEngine) nativeCatalog(ctx context.Context, input nativeInput
 		} else if keyword, keywordErr := hongguoSearchKeyword(query); keywordErr != nil {
 			err = keywordErr
 		} else {
-			entry, err = d.fetchHongguoSearchPage(ctx, keyword, page)
+			entry, err = d.fetchHongguoSearchPageCompat(ctx, keyword, page)
 		}
 		if err != nil {
 			return result, err
