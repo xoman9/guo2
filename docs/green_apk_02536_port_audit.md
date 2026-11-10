@@ -37,3 +37,33 @@ Go `.gopclntab` 中可還原的共用函式：
 - 不使用固定 Cookie、猜測驗證 token、或偽稱能繞過站點瀏覽器驗證。
 - 在各自站源中以相同影片 ID 比較列表、分類、詳情及播放資料；不同則視為移植未完成。
 - 保留 ARM64 與 armeabi-v7a，正式結果以 GitHub Actions + 實機測試為準。
+
+
+## 2026-11-11: ARM64 反組譯已證實的呼叫鏈
+
+分析來源：使用者上傳的 `绿果鉴-0.2.536-unlocked【TG@yydsys】.apk`，其 `lib/arm64-v8a/libduanju_core.so` 的 `.gopclntab` 函式表、`go tool addr2line` 及 AArch64 `bl` 呼叫目標。
+
+### 紅果搜尋（已核實的直接呼叫）
+
+- `hongguoAppSearchPage`（`provider_hongguo_app_features.go:53`, `0x344bfb0`）：直接呼叫 `hongguoAppModernRequestTo`（`provider_hongguo_app.go:156`）及 `hongguoAppCollectRows`（`provider_hongguo_app_features.go:31`）。
+- `hongguoAppSearchCue`（`provider_hongguo_app_features.go:97`, `0x344c720`）：直接呼叫 `hongguoAppModernRequestTo`。
+- `hongguoAppModernRequestTo` 直接呼叫 `hongguoAppRequestToMode`（`provider_hongguo_app.go:216`）。後者直接呼叫 `hongguoAppQuery`、`http.NewRequestWithContext`、`doCatalogRequestWithClient`、`rotateHongguoDevice`、`json.Decoder.Decode`、`hongguoBusinessCode`。
+- `hongguoAppSearchFallback`（`provider_hongguo_search.go:368`, `0x346ede0`）直接呼叫 `fetchHongguoAppCatalogCategory`（`provider_hongguo_catalog.go:126`），不是只重試舊版 `search/tab`。
+- 因此目前 guo2 的新版路由 + `hongguoAppRequest` + 通用 JSON 解析 + 舊版 tab 備援**不等同於 APK 的搜尋實作**。需要核對 RequestToMode 的參數、模式、headers、使用的 client、解析 CollectRows 的欄位、分類備援策略。尚未確認新版搜尋 API 是否能在實機返回有效結果。
+
+### MacCMS / 撩果驗證（已核實的直接呼叫）
+
+- `fetchMaccmsCatalogPage`（`provider_duanju_maccms.go:332`, `0x3403730`）直接呼叫 `duanjuBaseURL`、`duanjuSourceAgent`、`fetchProviderPage`、`maccmsCards`、`followMaccmsChallenge`。
+- `followMaccmsChallenge`（`provider_duanju_maccms.go:304`, `0x3403530`）直接呼叫 `fetchProviderText`、`regexp.FindStringSubmatch`、`duanjuAbsolute`、`isProviderHTTPMediaURL`、`html.ParseWithOptions`。這表明有跟隨／處理驗證相關網頁的原生流程，但單憑此函式無法證明「自動繞過」或成功通過。
+- APK 另有 `challenge.go`、`challenge_runtime.go` 的 `markPending`、`acceptChallenge`、`complete`、`cookieHeader`、`challengeJar.Cookies` 等函式，顯示具備保存驗證工作階段的通用基礎設施。**尚未證實這套 challengeStore 直接由撩果呼叫**。
+- `liaoguo-jingpin`、`liaoguo-guochan`、`liaoguo-zipai`、`liaoguo-zimu` 是 APK 中的分類字串；與 guo2 的「數字分類 ID」沒有已驗證的等價映射。
+- 外部瀏覽器開啟入口不能保證將 Cookie／User-Agent／Session 狀態帶回原生 Go HTTP 客戶端。不得稱其為已完成的驗證修復。
+
+### 實作前必須取得／還原
+
+1. 對應 APK 的 `hongguoAppRequestToMode` 參數及實際 HTTP 請求方式；確認任何裝置註冊與服務端授權均為合法正式流程。
+2. `hongguoAppCollectRows` 處理的實際 response schema、`hongguoAppSearchFallback` 分類匹配策略。
+3. `followMaccmsChallenge` 對應的頁面辨識與合法使用者驗證後 Session 保存方法，確認是否確實由撩果使用。
+4. 實機比對同關鍵字與分類的影片 ID、片名、封面及分頁。請求／回應樣本不得包含可用 Cookie、授權碼或識別碼。
+
+**結論**：這次完成的是有函式呼叫證據的靜態分析，尚未等效實作。不可再宣稱單純調整超時或入口就是搜尋／撩果修復。
