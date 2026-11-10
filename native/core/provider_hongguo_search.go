@@ -160,7 +160,9 @@ func (downloader *Downloader) fetchHongguoSearch(ctx context.Context, keyword st
 		return hongguoSearchEntry{}, err
 	}
 	reportHongguoSearchProgress(ctx, hongguoSearchEntry{Dramas: mergeHongguoSearchDramas([]Drama{}, names)})
-	pageCtx, cancel := context.WithTimeout(ctx, hongguoSearchPageTimeout)
+	// The APK search/page route is not guaranteed to answer within 5s.
+	// Allocate an 18s combined budget, reserving time for a legacy retry.
+	pageCtx, cancel := context.WithTimeout(ctx, 18*time.Second)
 	defer cancel()
 	page, pageErr := downloader.fetchHongguoSearchPageCompat(pageCtx, keyword, 1)
 	if errors.Is(ctx.Err(), context.Canceled) {
@@ -318,7 +320,7 @@ func (downloader *Downloader) hongguoSearchScore(ctx context.Context, dramaID, t
 // Prefer the search/page route discovered in 0.2.536 for every page.
  // Fall back to search/tab only if the new route fails or its schema changes.
 func (downloader *Downloader) fetchHongguoSearchPageCompat(ctx context.Context, keyword string, pageNum int) (hongguoSearchEntry, error) {
-	apkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	apkCtx, cancel := context.WithTimeout(ctx, 9*time.Second)
 	result, err := downloader.fetchHongguoApkSearchPage(apkCtx, keyword, pageNum)
 	cancel()
 	if err == nil { return result, nil }
