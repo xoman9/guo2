@@ -28,16 +28,25 @@ jobs:
         shell: bash
         env:
           GUO2_UPSTREAM_SYNC_TOKEN: ${{ secrets.GUO2_UPSTREAM_SYNC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote add source https://github.com/Xanerix/guoapp.git
-          git fetch source main
+          # Sync the latest officially published release, not unreleased main.
+          # releases/latest excludes draft and pre-release versions.
+          release_tag=$(gh api repos/Xanerix/guoapp/releases/latest --jq '.tag_name')
+          if [ -z "$release_tag" ]; then
+            echo '::error::Xanerix/guoapp has no latest stable Release tag.' >&2
+            exit 1
+          fi
+          git fetch source "refs/tags/$release_tag:refs/tags/$release_tag"
           git fetch origin upstream custom
           old_upstream=$(git rev-parse origin/upstream)
-          new_upstream=$(git rev-parse source/main)
+          new_upstream=$(git rev-parse "$release_tag^{commit}")
           before_custom=$(git rev-parse origin/custom)
+          echo "Selected official release: $release_tag ($new_upstream)" >> "$GITHUB_STEP_SUMMARY"
           # GitHub rejects pushes that introduce workflow-file changes
           # unless the authenticated credential can update workflows.
           # Fail early with a one-time setup instruction instead of trying
@@ -56,7 +65,7 @@ jobs:
             echo "Updated upstream: $old_upstream -> $new_upstream" >> "$GITHUB_STEP_SUMMARY"
           fi
           git checkout -B custom origin/custom
-          if ! git merge --no-edit source/main; then
+          if ! git merge --no-edit "$new_upstream"; then
             git merge --abort || true
             echo 'Merge conflict: custom untouched. Resolve manually.' >&2
             exit 1
