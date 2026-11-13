@@ -87,30 +87,29 @@ jobs:
             exit 1
           fi
           (cd native && go test -tags=zhenguojian ./...)
-      - name: Verify original custom channel coverage
+      - name: Verify only prior guo2 added sources
         if: steps.sync.outputs.failures == '0'
         shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import re
-          expected = set("""
-          hongguo hanxiaoquan guipian sorani huangdou huangju yeguo
-          lujj31 liuguo xiaoguo youguo meiguo yingguo luguo liguo
-          juguo ningguo mangguo chengguodj jiaoguo dsd jinguoduanju
-          jinguo heitao beabox huangguo-video huangguoai cloudfront
-          """.split())
-          path = Path("native/sources_custom/flavor_zhenguojian.go")
-          selected = set(re.findall(r'"([a-z][a-z0-9-]*)"', path.read_text(encoding="utf-8")))
-          missing = sorted(expected - selected)
-          summary = Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
-          with summary.open("a", encoding="utf-8") as stream:
-              stream.write(f"\nCustom source parity: {len(expected)-len(missing)}/{len(expected)}\n")
-              if missing:
-                  stream.write("Missing: " + ", ".join(missing) + "\n")
-          print(f"Expected {len(expected)} historical sources; selected {len(expected)-len(missing)}.")
-          if missing:
-              raise SystemExit("Missing custom source modules: " + ", ".join(missing))
+          import re, subprocess
+          registry = subprocess.check_output(
+              ['git', 'show', 'origin/custom:native/core/provider_apk391_registry.go'],
+              text=True,
+          )
+          match = re.search(r'var apk391Sources\s*=\s*\[\]apk391SourceSpec\s*\{(.*?)\n\}', registry, re.S)
+          if match is None:
+              raise SystemExit('Previous guo2 channel registry missing')
+          expected = set(re.findall(r'\{\s*"([a-z][a-z0-9-]*)"\s*,', match.group(1)))
+          expected |= {'lujj31', 'liuguo', 'xiaoguo'}
+          target = Path('native/sources_custom/flavor_zhenguojian.go').read_text(encoding='utf-8')
+          actual = set(re.findall(r'"([a-z][a-z0-9-]*)"', target))
+          actual.discard('zhenguojian')
+          if actual != expected:
+              raise SystemExit(f'Added source mismatch: missing={sorted(expected-actual)} extra={sorted(actual-expected)}')
+          print(f'Prior guo2 added source IDs retained: {len(expected)}')
           PY
       - name: Final instructions
         if: success()
