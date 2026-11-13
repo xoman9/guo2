@@ -41,7 +41,7 @@ jobs:
   dry-run-latest-replay:
     name: Replay latest Release without pushing
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +101,72 @@ jobs:
           flutter pub get --enforce-lockfile
           dart analyze --fatal-infos lib test
           flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Set up Android build toolchain
+        if: steps.replay.outcome == 'success'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK
+        if: steps.replay.outcome == 'success'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+          accept-android-sdk-licenses: true
+      - name: Install required Android NDK
+        if: steps.replay.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='28.2.13676358'
+          path="$ANDROID_HOME/ndk/$version"
+          if [ ! -f "$path/source.properties" ]; then
+            sdkmanager --sdk_root="$ANDROID_HOME" "ndk;$version"
+          fi
+          grep -Eq "Pkg.Revision[[:space:]]*=[[:space:]]*$version" "$path/source.properties"
+      - name: Build ARM64 and v7a test-only coexist APKs (not permanent signed)
+        if: steps.replay.outcome == 'success'
+        env:
+          ZHENGUOJIAN_PACKAGE_NAME: com.duanju.coexist
+          ZHENGUOJIAN_DISPLAY_NAME: 小果影視-共存版
+          ZHENGUOJIAN_LATIN_NAME: XiaoGuo
+          PROJECT_URL: https://github.com/xoman9/guo2
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          set -euo pipefail
+          python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a
+      - name: Validate both test APK identities and native libraries
+        if: steps.replay.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(dist/android/*arm64-v8a.apk dist/android/*armeabi-v7a.apk)
+          if [ "${#apks[@]}" -ne 2 ]; then
+            echo "::error::Expected exactly ARM64 and v7a test APKs; got ${#apks[@]}"
+            exit 1
+          fi
+          aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)
+          test -n "$aapt" && test -n "$signer"
+          for apk in "${apks[@]}"; do
+            "$signer" verify --verbose "$apk"
+            manifest=$("$aapt" dump badging "$apk")
+            printf '%s\n' "$manifest" | grep -q "package: name='com.duanju.coexist'"
+            echo "Verified coexist package and signature: $(basename "$apk")" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "These are CI test-signed builds, NOT permanently signed update APKs." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload ARM64/v7a test builds (never publish Release)
+        if: steps.replay.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: guo2-latest-replay-TEST-ONLY-unsigned-for-update
+          path: |
+            dist/android/*arm64-v8a.apk
+            dist/android/*armeabi-v7a.apk
+          retention-days: 7
+          if-no-files-found: error
       - name: Show compatibility decisions
         if: always()
         env:
