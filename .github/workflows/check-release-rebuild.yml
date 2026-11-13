@@ -41,7 +41,7 @@ jobs:
   dry-run-latest-replay:
     name: Replay latest Release without pushing
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,6 +59,45 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/sync_release_custom.py
+      - name: Setup Go
+        if: steps.replay.outcome == 'success'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - name: Test Go core after replay
+        if: steps.replay.outcome == 'success'
+        working-directory: native
+        run: go test ./...
+      - name: Link full custom source module (never example providers)
+        if: steps.replay.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "import sys;sys.path.insert(0,'scripts');from app_build import link_sources;link_sources(None)"
+          grep -q 'duanjuapp/native/sources_custom' native/bridge/sources_gen.go
+          if grep -q 'sources_example' native/bridge/sources_gen.go; then
+            echo "::error::Example-only providers would produce an incomplete guo2 build."
+            exit 1
+          fi
+      - name: Test all-sources Go registration and adapters
+        if: steps.replay.outcome == 'success'
+        working-directory: native
+        run: go test -tags=zhenguojian ./...
+      - name: Setup Flutter
+        if: steps.replay.outcome == 'success'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Verify Flutter analyzer and widget tests
+        if: steps.replay.outcome == 'success'
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile
+          dart analyze --fatal-infos lib test
+          flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
       - name: Show compatibility decisions
         if: always()
         env:
