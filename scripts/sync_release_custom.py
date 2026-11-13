@@ -228,6 +228,24 @@ def main() -> int:
         git("commit", "-m", "replay(custom): " + path, "--allow-empty")
         applied.append(path)
 
+    # The upstream 1.0.9 core exported these previously private types.
+    # Preserve source modules without reverting any upstream implementation.
+    compat = pathlib.Path("native/core/custom_compat_aliases.go")
+    upstream_categories = pathlib.Path("native/core/app_categories.go").read_text(encoding="utf-8")
+    upstream_media = pathlib.Path("native/core/provider_media.go").read_text(encoding="utf-8")
+    if "type Category struct" not in upstream_categories or "type ProviderMedia struct" not in upstream_media:
+        raise SystemExit("Upstream API changed: review Category / ProviderMedia aliases")
+    compat.write_text(
+        "package core\n\n"
+        "// Compatibility aliases for site adapters carried forward from custom.\n"
+        "// Original upstream Category and ProviderMedia implementations are unchanged.\n"
+        "type nativeCategory = Category\n"
+        "type providerMedia = ProviderMedia\n",
+        encoding="utf-8"
+    )
+    git("add", "--", str(compat))
+    git("commit", "-m", "compat(sync): bridge legacy source type names to upstream public API")
+
     report = [
         "# Upstream Release → guo2 custom replay",
         "",
