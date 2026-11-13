@@ -503,6 +503,49 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
     git("add", "--", str(smoke))
     git("commit", "-m", "test(sync): enforce custom channel registration and source availability")
 
+    # The upstream Release moved source registration into a separate Go
+    # workspace module. Never fall back to its synthetic example provider.
+    source_module = pathlib.Path("native/sources_custom")
+    source_module.mkdir(parents=True, exist_ok=True)
+    (source_module / "go.mod").write_text(
+        "module duanjuapp/native/sources_custom\n\ngo 1.24.1\n",
+        encoding="utf-8"
+    )
+    (source_module / "flavor_zhenguojian.go").write_text("""//go:build zhenguojian
+
+package custom
+
+import "duanjuapp/native/core"
+
+func init() {
+ core.RegisterFlavor("zhenguojian", []string{
+  "lujj31", "liuguo", "xiaoguo",
+  "youguo", "meiguo", "yingguo", "luguo", "liguo",
+  "juguo", "ningguo", "mangguo", "chengguodj", "jiaoguo",
+ })
+}
+""", encoding="utf-8")
+    git("add", "--", str(source_module))
+    git("commit", "-m", "feat(sync): provide real custom source module for all-sources builds")
+
+    builder = pathlib.Path("scripts/app_build.py")
+    builder_text = builder.read_text(encoding="utf-8")
+    if "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'" not in builder_text:
+        raise SystemExit("Upstream source link contract changed; refuse example-only APK")
+    if "paths = [EXAMPLE_SOURCES]" not in builder_text:
+        raise SystemExit("Upstream source link default changed; refuse example-only APK")
+    builder_text = builder_text.replace(
+        "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'",
+        "CUSTOM_SOURCES = NATIVE_ROOT / 'sources_custom'", 1)
+    builder_text = builder_text.replace(
+        "paths = [EXAMPLE_SOURCES]", "paths = [CUSTOM_SOURCES]", 1)
+    builder_text = builder_text.replace(
+        "尚未接入站源仓库，改用只有假数据的示例站源；接入真实站源请加 --sources <站源仓库路径>。",
+        "默认接入 guo2 客製站源模块；其他模块可用 --sources 指定。", 1)
+    builder.write_text(builder_text, encoding="utf-8")
+    git("add", "--", str(builder))
+    git("commit", "-m", "fix(sync): default Android builds to custom provider module, not synthetic example")
+
     report = [
         "# Upstream Release → guo2 custom replay",
         "",
