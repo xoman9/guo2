@@ -256,6 +256,7 @@ def main() -> int:
         "var providerHTMLText = ProviderHTMLText\n"
         "var nativeText = NativeText\n"
         "var nativeNormalize = NativeNormalize\n"
+        "var mergeNativeDrama = MergeNativeDrama\n"
         "var nativeDramaScore = NativeDramaScore\n"
         "var sortProviderChapters = SortProviderChapters\n"
         "var chapterEpisodeNumber = ChapterEpisodeNumber\n"
@@ -316,7 +317,17 @@ func (p *customSiteProvider) Search(ctx context.Context, page int, query string)
  return p.catalog(ctx, page, "", query)
 }
 func (p *customSiteProvider) Detail(ctx context.Context, id string) (Drama, []Chapter, error) {
- return p.detail(ctx, id)
+ raw, chapters, err := p.detail(ctx, id)
+ if err != nil { return raw, chapters, err }
+ // Preserve the catalog title if a Tao detail page exposes a generic
+ // playback-line label instead of the actual series title.
+ if p.descriptor.ID == sourceLujj31 &&
+   (!nativeLujj31CatalogTitleValid(raw.DisplayTitle(), id) ||
+     raw.DisplayTitle() == "播放線路" || raw.DisplayTitle() == "播放线路") {
+  raw.Title = ""
+  raw.Name = ""
+ }
+ return raw, chapters, nil
 }
 func (p *customSiteProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
  return p.media(ctx, task)
@@ -389,6 +400,25 @@ func (d *Downloader) fetchProviderPage(ctx context.Context, address, referer, ag
 """, encoding="utf-8")
     git("add", "--", str(compat_http))
     git("commit", "-m", "compat(sync): forward legacy page requests into upstream Host")
+
+    title_compat = pathlib.Path("native/core/custom_lujj31_title.go")
+    title_compat.write_text("""package core
+
+import "strings"
+
+// Reject generic detail headings that used to overwrite the real Tao catalog title.
+func nativeLujj31CatalogTitleValid(title, sourceID string) bool {
+ title = strings.TrimSpace(title)
+ if title == "" || title == "短剧" || title == "短劇" ||
+  title == "影片 "+sourceID || title == "影片" || title == "桃果" ||
+  title == "播放線路" || title == "播放线路" {
+  return false
+ }
+ return true
+}
+""", encoding="utf-8")
+    git("add", "--", str(title_compat))
+    git("commit", "-m", "fix(sync): retain Tao catalog title when detail heading is generic")
 
     report = [
         "# Upstream Release → guo2 custom replay",
