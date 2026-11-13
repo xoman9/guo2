@@ -303,13 +303,67 @@ def main() -> int:
         "native/core/provider_xiaoguo.go",
         "test/local_store_access_test.dart",
     }
+    # Preserve the agreed customization order from the earlier guo2 workflow.
+    # A phase is considered complete only after its owned paths are processed.
+    customization_phases = {
+        "01 UI": [
+            "lib/ui/app.dart", "lib/ui/widgets/source_bar.dart",
+            "lib/ui/widgets/page_header.dart", "lib/models.dart",
+        ],
+        "02 Downloads": [
+            "native/core/app_storage.go", "native/core/app_storage_test.go",
+        ],
+        "03 Merge": [
+            "lib/merge_location.dart", "lib/merge_queue.dart",
+        ],
+        "04 Providers": [
+            "native/core/app_categories.go", "native/core/app_runtime.go",
+            "native/core/provider_media.go", "native/core/provider_huangguo.go",
+            "native/core/provider_apk391_categories.go",
+            "native/core/provider_apk391_chengguo.go",
+            "native/core/provider_apk391_maccms.go",
+            "native/core/provider_apk391_registry.go",
+            "native/core/provider_liuguo.go", "native/core/provider_lujj31.go",
+            "native/core/provider_lujj31_player.go",
+            "native/core/provider_lujj31_title_test.go",
+            "native/core/provider_xiaoguo.go",
+            "lib/ui/settings/sources_view.dart",
+        ],
+        "05 Settings": [
+            "lib/ui/settings/storage_view.dart", "lib/ui/terms_page.dart",
+        ],
+        "06 Coexist": [
+            "android/app/build.gradle.kts",
+            "android/app/src/main/AndroidManifest.xml",
+            "android/app/src/main/kotlin/com/guoapp/MainActivity.kt",
+            "lib/app_build.dart", "scripts/app_build.py",
+            "test/local_store_access_test.dart",
+            ".github/workflows/build-custom.yml", "README.md",
+        ],
+    }
+    phase_for_path: dict[str, str] = {}
+    for phase, phase_paths in customization_phases.items():
+        for entry in phase_paths:
+            if entry in phase_for_path:
+                raise SystemExit("A customization path belongs to multiple phases: " + entry)
+            phase_for_path[entry] = phase
+    if set(phase_for_path) != rule_paths | overlay_paths:
+        raise SystemExit("Phase manifest does not match reviewed custom paths")
+    phase_results: dict[str, list[str]] = {phase: [] for phase in customization_phases}
+    # Only apply historical paths present in the reference custom change set.
+    # Unexpected additions are reported, not silently copied into latest.
+    ordered_paths = [
+        path for phase_paths in customization_phases.values()
+        for path in phase_paths if path in paths
+    ]
     applied: list[str] = []
     overrides: list[dict[str, str]] = []
     failures: list[dict[str, str]] = []
     unexpected = sorted(set(paths) - rule_paths - overlay_paths)
     for path in unexpected:
         failures.append({"path": path, "reason": "New customization path; user review required."})
-    for path in paths:
+    for path in ordered_paths:
+        phase = phase_for_path[path]
         if path in rule_paths:
             try:
                 rule = deterministic_override(path)
@@ -326,6 +380,7 @@ def main() -> int:
             stage_if_present(path)
             git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
             overrides.append({"path": path, "rule": rule})
+            phase_results[phase].append(path)
             continue
         if path not in overlay_paths:
             continue
@@ -350,6 +405,7 @@ def main() -> int:
         stage_if_present(path)
         git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
         applied.append(path)
+        phase_results[phase].append(path)
 
     if failures:
         report_lines = [
@@ -357,6 +413,7 @@ def main() -> int:
             "",
             f"- Upstream Release: `{tag}`",
             f"- Failed or unreviewed customization paths: {len(failures)}",
+            "- Customization order: UI → Downloads → Merge → Providers → Settings → Coexist.",
             "- No merge conflict; these are customization compatibility questions.",
             "- No automatic fallback to old upstream core/UI files.",
             "",
@@ -364,7 +421,7 @@ def main() -> int:
         ]
         for n, item in enumerate(failures, 1):
             report_lines.extend([
-                f"{n}. `{item['path']}`",
+                f"{n}. `{item['path']}` ({phase_for_path.get(item['path'], 'unclassified')})",
                 f"   - Reason: {item['reason']}",
                 "   - Decision required: adapt the custom modification to the new upstream structure, skip this customization, or provide a new rule.",
             ])
@@ -702,6 +759,9 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
         "- Git merge conflicts: **not applicable (no merge performed)**",
         "- Source: the full official Release, not the previous migration branch.",
         "- Existing custom, main and upstream branches were not changed.",
+        "",
+        "## Customization phase results",
+        *[f"- {phase}: {len(items)} paths processed" for phase, items in phase_results.items()],
         "",
         "## Reviewed custom-owned file overlays",
         *["- `" + p + "`" for p in applied],
