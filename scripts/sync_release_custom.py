@@ -285,6 +285,86 @@ def main() -> int:
     git("add", "--", str(compat))
     git("commit", "-m", "compat(sync): bridge legacy source type names to upstream public API")
 
+    # Register retained custom site modules into upstream's dynamic Provider API.
+    # Without this step a successful compile would still omit the custom sources.
+    custom_providers = pathlib.Path("native/core/custom_registry_sources.go")
+    custom_providers.write_text("""package core
+
+import "context"
+
+// Registered custom sources use the official upstream Provider Registry.
+// Their existing catalog/detail/media parsers remain the source of truth.
+type customSiteProvider struct {
+ d *Downloader
+ descriptor SourceDescriptor
+ categories func(context.Context) ([]Category, error)
+ catalog func(context.Context, int, string, string) ([]Drama, bool, error)
+ detail func(context.Context, string) (Drama, []Chapter, error)
+ media func(context.Context, Task) (ProviderMedia, error)
+}
+
+func (p *customSiteProvider) Descriptor() SourceDescriptor { return p.descriptor }
+func (p *customSiteProvider) Categories(ctx context.Context, force bool) ([]Category, error) {
+ return p.categories(ctx)
+}
+func (p *customSiteProvider) CatalogPage(ctx context.Context, page int, category string) ([]Drama, bool, error) {
+ return p.catalog(ctx, page, category, "")
+}
+func (p *customSiteProvider) Search(ctx context.Context, page int, query string) ([]Drama, bool, error) {
+ return p.catalog(ctx, page, "", query)
+}
+func (p *customSiteProvider) Detail(ctx context.Context, id string) (Drama, []Chapter, error) {
+ return p.detail(ctx, id)
+}
+func (p *customSiteProvider) ResolveMedia(ctx context.Context, task Task) (ProviderMedia, error) {
+ return p.media(ctx, task)
+}
+
+func registerCustomSource(id, name string, host Host,
+ categories func(context.Context) ([]Category, error),
+ catalog func(context.Context, int, string, string) ([]Drama, bool, error),
+ detail func(context.Context, string) (Drama, []Chapter, error),
+ media func(context.Context, Task) (ProviderMedia, error)) Provider {
+ d, ok := host.(*Downloader)
+ if !ok { return nil }
+ return &customSiteProvider{
+  d: d, descriptor: SourceDescriptor{ID: id, Name: name, DefaultOff: true,
+   ValidCategory: func(category string) bool { return category == "" || WebProviderNumericID.MatchString(category) }},
+  categories: categories, catalog: catalog, detail: detail, media: media,
+ }
+}
+
+func init() {
+ Register(SourceDescriptor{ID: sourceLujj31, Name: "桃果 +", DefaultOff: true,
+  ValidCategory: func(category string) bool { return category == "" || WebProviderNumericID.MatchString(category) }},
+  func(host Host) Provider {
+   d, ok := host.(*Downloader); if !ok { return nil }
+   return registerCustomSource(sourceLujj31, "桃果 +", host, d.fetchLujj31Categories,
+    d.fetchLujj31CatalogPage, d.fetchLujj31Detail, d.resolveLujj31Media)
+  })
+ Register(SourceDescriptor{ID: sourceLiuguo, Name: "榴果 +", DefaultOff: true,
+  ValidCategory: func(category string) bool { return category == "" || WebProviderNumericID.MatchString(category) }},
+  func(host Host) Provider {
+   d, ok := host.(*Downloader); if !ok { return nil }
+   return registerCustomSource(sourceLiuguo, "榴果 +", host, d.fetchLiuguoCategories,
+    d.fetchLiuguoCatalogPage, d.fetchLiuguoDetail, d.resolveLiuguoMedia)
+  })
+ Register(SourceDescriptor{ID: sourceXiaoguo, Name: "宵果 +", DefaultOff: true,
+  ValidCategory: validXiaoguoCategory},
+  func(host Host) Provider {
+   d, ok := host.(*Downloader); if !ok { return nil }
+   provider := registerCustomSource(sourceXiaoguo, "宵果 +", host, d.fetchXiaoguoCategories,
+    d.fetchXiaoguoCatalogPage, d.fetchXiaoguoDetail, d.resolveXiaoguoMedia)
+   if p, ok := provider.(*customSiteProvider); ok {
+    p.descriptor.ValidCategory = validXiaoguoCategory
+   }
+   return provider
+  })
+}
+""", encoding="utf-8")
+    git("add", "--", str(custom_providers))
+    git("commit", "-m", "feat(sync): register Tao, Liu and Xiao parsers in upstream Provider Registry")
+
     report = [
         "# Upstream Release → guo2 custom replay",
         "",
