@@ -763,12 +763,12 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
     # Never enumerate or change the original upstream Release source list.
     legacy_registry = run("show", "origin/custom:native/core/provider_apk391_registry.go")
     registry_match = re.search(
-        r"var apk391Sources\\s*=\\s*\\[\\]apk391SourceSpec\\s*\\{(.*?)\\n\\}",
+        r"var apk391Sources\s*=\s*\[\]apk391SourceSpec\s*\{(.*?)\n\}",
         legacy_registry, re.S,
     )
     if not registry_match:
         raise SystemExit("Unable to read the reviewed guo2 added-source registry")
-    registry_ids = re.findall(r'\\{\\s*"([a-z][a-z0-9-]*)"\\s*,', registry_match.group(1))
+    registry_ids = re.findall(r'\{\s*"([a-z][a-z0-9-]*)"\s*,', registry_match.group(1))
     # These three separately implemented sites were part of that same custom.
     direct_sources = [
         ("lujj31", "native/core/provider_lujj31.go"),
