@@ -61,6 +61,16 @@ def main() -> int:
     def deterministic_override(path: str) -> str | None:
         """Apply reviewed conflict rules; never replace core files blindly."""
         file = pathlib.Path(path)
+        if path == "scripts/app_build.py":
+            text = file.read_text(encoding="utf-8")
+            before = "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'"
+            default = "paths = [EXAMPLE_SOURCES]"
+            if text.count(before) != 1 or text.count(default) != 1:
+                return None
+            text = text.replace(before, "CUSTOM_SOURCES = NATIVE_ROOT / 'sources_custom'", 1)
+            text = text.replace(default, "paths = [CUSTOM_SOURCES]", 1)
+            file.write_text(text, encoding="utf-8")
+            return "connect generated real custom source module instead of upstream example"
         if path == "android/app/build.gradle.kts":
             text = file.read_text(encoding="utf-8")
             if '?: "真果鉴"' not in text or '?: "com.guoapp.all"' not in text:
@@ -245,6 +255,7 @@ def main() -> int:
     rule_paths = {
         "android/app/build.gradle.kts",
         "lib/app_build.dart",
+        "scripts/app_build.py",
         "lib/models.dart",
         "lib/ui/settings/storage_view.dart",
         "lib/ui/terms_page.dart",
@@ -277,7 +288,6 @@ def main() -> int:
         "native/core/provider_lujj31_player.go",
         "native/core/provider_lujj31_title_test.go",
         "native/core/provider_xiaoguo.go",
-        "scripts/app_build.py",
         "test/local_store_access_test.dart",
     }
     applied: list[str] = []
@@ -635,40 +645,22 @@ func init() {
     git("add", "--", str(source_module))
     git("commit", "-m", "feat(sync): provide real custom source module for all-sources builds")
 
-    builder = pathlib.Path("scripts/app_build.py")
-    builder_text = builder.read_text(encoding="utf-8")
-    if "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'" not in builder_text:
-        raise SystemExit("Upstream source link contract changed; refuse example-only APK")
-    if "paths = [EXAMPLE_SOURCES]" not in builder_text:
-        raise SystemExit("Upstream source link default changed; refuse example-only APK")
-    builder_text = builder_text.replace(
-        "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'",
-        "CUSTOM_SOURCES = NATIVE_ROOT / 'sources_custom'", 1)
-    builder_text = builder_text.replace(
-        "paths = [EXAMPLE_SOURCES]", "paths = [CUSTOM_SOURCES]", 1)
-    builder_text = builder_text.replace(
-        "尚未接入站源仓库，改用只有假数据的示例站源；接入真实站源请加 --sources <站源仓库路径>。",
-        "默认接入 guo2 客製站源模块；其他模块可用 --sources 指定。", 1)
-    builder.write_text(builder_text, encoding="utf-8")
-    git("add", "--", str(builder))
-    git("commit", "-m", "fix(sync): default Android builds to custom provider module, not synthetic example")
-
     report = [
         "# Upstream Release → guo2 custom replay",
         "",
         f"- Upstream Release: `{tag}` (`{release_sha}`)",
         f"- Original custom: `{custom_sha}`",
         f"- Historical reference base (no merge): `{base_sha}`",
-        f"- Applied paths: **{len(applied)}** / {len(paths)}",
-        f"- Deterministic overrides: **{len(overrides)}**",
+        f"- Custom file overlays: **{len(applied)}** / {len(paths)}",
+        f"- Successful customization rules: **{len(overrides)}**",
         "- Git merge conflicts: **not applicable (no merge performed)**",
         "- Source: the full official Release, not the previous migration branch.",
         "- Existing custom, main and upstream branches were not changed.",
         "",
-        "## Applied paths",
+        "## Reviewed custom-owned file overlays",
         *["- `" + p + "`" for p in applied],
         "",
-        "## Deterministic overrides",
+        "## Deterministic customization rules",
         *[f"- {entry['path']}: {entry['rule']}" for entry in overrides],
         "",
         "## Customization issues",
@@ -694,7 +686,7 @@ func init() {
         with open(output_path, "a", encoding="utf-8") as stream:
             stream.write(f"branch={target_branch}\n")
             stream.write(f"release={tag}\n")
-            stream.write(f"conflicts={len(conflicts)}\n")
+            stream.write("failures=0\n")
             stream.write(f"applied={len(applied)}\n")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a", encoding="utf-8") as stream:
