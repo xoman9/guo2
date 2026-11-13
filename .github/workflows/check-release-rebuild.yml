@@ -37,3 +37,48 @@ jobs:
           assert '"failures=0' in source, 'success output contract missing'
           print('Release rebuild structural guards passed')
           PY
+
+  dry-run-latest-replay:
+    name: Replay latest Release without pushing
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reapply reviewed customizations to latest Release (read-only dry run)
+        id: replay
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_DRY_RUN: '1'
+          SYNC_REPORT: ${{ runner.temp }}/release-replay.md
+        run: |
+          set -euo pipefail
+          python scripts/sync_release_custom.py
+      - name: Show compatibility decisions
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/release-replay.md
+        run: |
+          if [ -s "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+            cat "$REPORT"
+          else
+            echo "No replay report was generated; see the replay job logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload full replay report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guo2-latest-release-replay-report
+          path: ${{ runner.temp }}/release-replay.md
+          if-no-files-found: warn
+      - name: Require a successful replay
+        if: steps.replay.outcome != 'success'
+        run: |
+          echo "::error::Latest Release replay requires review; see the generated numbered report."
+          exit 1
