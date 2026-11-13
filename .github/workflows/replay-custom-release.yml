@@ -29,6 +29,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate rebuild script syntax
+        run: python -m py_compile scripts/sync_release_custom.py
       - name: Rebuild from latest stable upstream Release and apply reviewed customizations
         id: sync
         env:
@@ -67,7 +69,7 @@ jobs:
           flutter-version: '3.47.9'
           channel: stable
           cache: true
-      - name: Test upstream Release plus custom patches (Flutter)
+      - name: Test upstream Release plus customizations (Flutter)
         if: steps.sync.outputs.failures == '0'
         run: |
           flutter pub get --enforce-lockfile
