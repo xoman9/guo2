@@ -230,17 +230,67 @@ def main() -> int:
             return "retain upstream deletion of old implementation"
         return None
 
-    # Clean upstream Release rebuild, not a three-way merge.
-    # Custom is read-only and supplies legacy custom-owned files.
+    # Known customization rules are required. On future upstream changes,
+    # do not silently copy an old core/UI file if its reviewed rule fails.
+    rule_paths = {
+        "android/app/build.gradle.kts",
+        "lib/app_build.dart",
+        "lib/models.dart",
+        "lib/ui/settings/storage_view.dart",
+        "lib/ui/terms_page.dart",
+        "lib/ui/widgets/source_bar.dart",
+        "native/core/app_categories.go",
+        "native/core/app_runtime.go",
+        "native/core/app_storage.go",
+        "native/core/app_storage_test.go",
+        "native/core/provider_huangguo.go",
+        "native/core/provider_media.go",
+    }
+    # Only the previously reviewed standalone custom files may be overlaid.
+    # All newly changed paths must be reviewed before inclusion.
+    overlay_paths = {
+        ".github/workflows/build-custom.yml",
+        "README.md",
+        "android/app/src/main/AndroidManifest.xml",
+        "android/app/src/main/kotlin/com/guoapp/MainActivity.kt",
+        "lib/merge_location.dart",
+        "lib/merge_queue.dart",
+        "lib/ui/app.dart",
+        "lib/ui/settings/sources_view.dart",
+        "lib/ui/widgets/page_header.dart",
+        "native/core/provider_apk391_categories.go",
+        "native/core/provider_apk391_chengguo.go",
+        "native/core/provider_apk391_maccms.go",
+        "native/core/provider_apk391_registry.go",
+        "native/core/provider_liuguo.go",
+        "native/core/provider_lujj31.go",
+        "native/core/provider_lujj31_player.go",
+        "native/core/provider_lujj31_title_test.go",
+        "native/core/provider_xiaoguo.go",
+        "scripts/app_build.py",
+        "test/local_store_access_test.dart",
+    }
     applied: list[str] = []
     overrides: list[dict[str, str]] = []
-    conflicts: list[dict[str, str]] = []
+    failures: list[dict[str, str]] = []
+    unexpected = sorted(set(paths) - rule_paths - overlay_paths)
+    for path in unexpected:
+        failures.append({"path": path, "reason": "New customization path; user review required."})
     for path in paths:
-        rule = deterministic_override(path)
-        if rule is not None:
+        if path in rule_paths:
+            try:
+                rule = deterministic_override(path)
+            except (ValueError, IndexError, OSError, subprocess.CalledProcessError) as exc:
+                failures.append({"path": path, "reason": f"Rule incompatible with upstream: {exc}"})
+                continue
+            if rule is None:
+                failures.append({"path": path, "reason": "Expected customization rule did not match upstream code."})
+                continue
             git("add", "-A", "--", path)
             git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
             overrides.append({"path": path, "rule": rule})
+            continue
+        if path not in overlay_paths:
             continue
         file = pathlib.Path(path)
         original = subprocess.run(
@@ -256,12 +306,50 @@ def main() -> int:
                 capture_output=True,
             ).returncode == 0
             if not existed:
-                raise SystemExit("Custom overlay unavailable: " + path)
+                failures.append({"path": path, "reason": "Legacy file unavailable; user review required."})
+                continue
             if file.exists():
                 git("rm", "-f", "--", path)
         git("add", "-A", "--", path)
         git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
         applied.append(path)
+
+    if failures:
+        report_lines = [
+            "# guo2 Release customization: decisions required",
+            "",
+            f"- Upstream Release: `{tag}`",
+            f"- Failed or unreviewed customization paths: {len(failures)}",
+            "- No merge conflict; these are customization compatibility questions.",
+            "- No automatic fallback to old upstream core/UI files.",
+            "",
+            "## Please decide how to modify these items",
+        ]
+        for n, item in enumerate(failures, 1):
+            report_lines.extend([
+                f"{n}. `{item['path']}`",
+                f"   - Reason: {item['reason']}",
+                "   - Decision required: adapt the custom modification to the new upstream structure, skip this customization, or provide a new rule.",
+            ])
+        report_lines.extend(["", "Reply with your choices for the numbered items before continuing."])
+        report_text = "\n".join(report_lines) + "\n"
+        report_path = pathlib.Path("RELEASE_SYNC_REPORT.md")
+        report_path.write_text(report_text, encoding="utf-8")
+        git("add", "--", str(report_path))
+        git("commit", "-m", "docs(sync): list customization decisions required")
+        git("push", "--force-with-lease", "origin", "HEAD:refs/heads/" + target_branch)
+        if out_file := os.environ.get("SYNC_REPORT"):
+            pathlib.Path(out_file).write_text(report_text, encoding="utf-8")
+        if out := os.environ.get("GITHUB_OUTPUT"):
+            with open(out, "a", encoding="utf-8") as stream:
+                stream.write(f"branch={target_branch}\n")
+                stream.write(f"release={tag}\n")
+                stream.write(f"failures={len(failures)}\n")
+        if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(summary, "a", encoding="utf-8") as stream:
+                stream.write(report_text)
+        print(report_text)
+        return 2
 
     # The upstream 1.0.9 core exported these previously private types.
     # Preserve source modules without reverting any upstream implementation.
@@ -560,7 +648,7 @@ func init() {
         "",
         f"- Upstream Release: `{tag}` (`{release_sha}`)",
         f"- Original custom: `{custom_sha}`",
-        f"- Three-way merge base: `{base_sha}`",
+        f"- Historical reference base (no merge): `{base_sha}`",
         f"- Applied paths: **{len(applied)}** / {len(paths)}",
         f"- Deterministic overrides: **{len(overrides)}**",
         "- Git merge conflicts: **not applicable (no merge performed)**",
@@ -573,9 +661,8 @@ func init() {
         "## Deterministic overrides",
         *[f"- {entry['path']}: {entry['rule']}" for entry in overrides],
         "",
-        "## Paths requiring conflict resolution",
-        *([f"- `{c['path']}`: `{c['error'].splitlines()[0][:180]}`" for c in conflicts]
-          if conflicts else ["None."]),
+        "## Customization issues",
+        "None detected during rule application. CI verification is still required.",
         "",
         "A conflict-free rebuild does **not** guarantee build compatibility.",
         "CI verification and review are mandatory before merging into custom.",
