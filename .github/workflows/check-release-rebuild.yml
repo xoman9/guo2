@@ -83,7 +83,10 @@ jobs:
       - name: Test all-sources Go registration and adapters
         if: steps.replay.outcome == 'success'
         working-directory: native
-        run: go test -tags=zhenguojian ./...
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -tags=zhenguojian ./... 2>&1 | tee "$RUNNER_TEMP/source-parity.log"
       - name: Setup Flutter
         if: always() && steps.replay.outcome == 'success'
         uses: subosito/flutter-action@v2
@@ -98,6 +101,30 @@ jobs:
           flutter pub get --enforce-lockfile
           dart analyze --fatal-infos lib test
           flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Add missing Provider diagnostics to replay report
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/release-replay.md
+          SOURCE_LOG: ${{ runner.temp }}/source-parity.log
+        shell: bash
+        run: |
+          if [ -s "$SOURCE_LOG" ]; then
+            {
+              echo
+              echo "## Actual build/test compatibility results"
+              if grep -q 'unregistered:' "$SOURCE_LOG"; then
+                echo
+                echo "**Unregistered historical channels (requires porting actual Provider implementations):**"
+                grep -E 'unregistered: ' "$SOURCE_LOG" | sed -E 's/.*unregistered: ([a-z0-9-]+).*/- \`\1\`/' | sort -u
+                echo
+                echo "Decision: port these legacy implementations to the current upstream Host/Provider Registry; do not add names without working adapters or silently delete channels."
+              fi
+              if grep -qE '(^| )FAIL|undefined:|no required module' "$SOURCE_LOG"; then
+                echo
+                echo "See the GitHub Actions Go step for the full error messages."
+              fi
+            } >> "$REPORT"
+          fi
       - name: Show compatibility decisions
         if: always()
         env:
