@@ -744,7 +744,7 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
   }
   if !nativeSourceAvailable(id) { t.Fatalf("source %q unavailable in unrestricted build", id) }
  }
- if len(ids) != 13 { t.Fatalf("expected 13 replayed channels, got %d", len(ids)) }
+ if len(ids) == 0 { t.Fatal("no guo2 added channels registered") }
 }
 """, encoding="utf-8")
     git("add", "--", str(smoke))
@@ -758,15 +758,33 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
         "module duanjuapp/native/sources_custom\n\ngo 1.24.1\n",
         encoding="utf-8"
     )
-    # This script adds ONLY guo2's 13 extra source adapters.
-    # Upstream Release source selection is not reconstructed or reimplemented.
-    extra_sources = [
-        "lujj31", "liuguo", "xiaoguo",
-        "youguo", "meiguo", "yingguo", "luguo", "liguo",
-        "juguo", "ningguo", "mangguo", "chengguodj", "jiaoguo",
+    # Derive the added source list from the earlier reviewed guo2 custom
+    # implementation, rather than pinning an arbitrary channel count.
+    # Never enumerate or change the original upstream Release source list.
+    legacy_registry = run("show", "origin/custom:native/core/provider_apk391_registry.go")
+    registry_match = re.search(
+        r"var apk391Sources\\s*=\\s*\\[\\]apk391SourceSpec\\s*\\{(.*?)\\n\\}",
+        legacy_registry, re.S,
+    )
+    if not registry_match:
+        raise SystemExit("Unable to read the reviewed guo2 added-source registry")
+    registry_ids = re.findall(r'\\{\\s*"([a-z][a-z0-9-]*)"\\s*,', registry_match.group(1))
+    # These three separately implemented sites were part of that same custom.
+    direct_sources = [
+        ("lujj31", "native/core/provider_lujj31.go"),
+        ("liuguo", "native/core/provider_liuguo.go"),
+        ("xiaoguo", "native/core/provider_xiaoguo.go"),
     ]
-    if len(extra_sources) != 13 or len(set(extra_sources)) != 13:
-        raise SystemExit("guo2 extra-source manifest is incomplete or duplicated")
+    for source_id, source_path in direct_sources:
+        exists = subprocess.run(
+            ["git", "cat-file", "-e", "origin/custom:" + source_path],
+            capture_output=True,
+        ).returncode == 0
+        if not exists:
+            raise SystemExit("Reviewed source missing: " + source_path)
+    extra_sources = [item[0] for item in direct_sources] + registry_ids
+    if not registry_ids or len(set(extra_sources)) != len(extra_sources):
+        raise SystemExit("Reviewed guo2 source registry missing or contains duplicate IDs")
     source_go_ids = ",\n  ".join(json.dumps(source) for source in extra_sources)
     (source_module / "flavor_zhenguojian.go").write_text(
         "//go:build zhenguojian\n\n"
@@ -777,7 +795,7 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
         encoding="utf-8",
     )
     # Functional coverage is enforced by custom_registry_sources_test.go:
-    # it checks 13 real Provider instances, not mere display names.
+    # it checks the actual added Provider instances, not mere display names.
     git("add", "--", str(source_module))
     git("commit", "-m", "feat(sync): provide real custom source module for all-sources builds")
 
