@@ -1,0 +1,39 @@
+name: Validate guo2 release rebuild (draft PR)
+on:
+  pull_request:
+    paths:
+      - scripts/sync_release_custom.py
+      - .github/workflows/replay-custom-release.yml
+      - .github/workflows/check-release-rebuild.yml
+      - GUO2_RELEASE_REBUILD_CHECKLIST.md
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-rebuild-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python syntax and required rebuild invariants
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/sync_release_custom.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          source = Path('scripts/sync_release_custom.py').read_text(encoding='utf-8')
+          code = ast.parse(source)
+          assert 'repos/Xanerix/guoapp/releases/latest' in source, 'latest stable Release discovery removed'
+          assert '"--3way"' not in source and 'git("apply"' not in source, '3-way replay reintroduced'
+          for key in ('01 UI', '02 Downloads', '03 Merge', '04 Providers', '05 Settings', '06 Coexist'):
+              assert key in source, f'missing customization phase: {key}'
+          for key in ('RELEASE_SYNC_REPORT.md', 'if failures:', 'restore_rule_path(path)'):
+              assert key in source, f'missing failure handling: {key}'
+          assert 'TestHistorical28SourcesAvailable' in source, 'functional source test missing'
+          assert '"com.duanju.coexist"' in source, 'coexist package name missing'
+          assert '"failures=0' in source, 'success output contract missing'
+          print('Release rebuild structural guards passed')
+          PY
