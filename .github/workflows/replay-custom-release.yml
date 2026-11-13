@@ -1,0 +1,81 @@
+name: Replay custom changes onto upstream Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/replay-custom-release.yml
+      - scripts/sync_release_custom.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: guo2-release-replay
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout automation branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild from latest stable upstream Release and apply custom patches
+        id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_REPORT: ${{ runner.temp }}/guo2-release-sync.md
+        run: python scripts/sync_release_custom.py
+      - name: Upload replay report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-sync-report-${{ github.run_number }}
+          path: ${{ runner.temp }}/guo2-release-sync.md
+          if-no-files-found: warn
+      - name: Check unresolved custom patch conflicts
+        if: steps.sync.outputs.conflicts != '0'
+        env:
+          CONFLICTS: ${{ steps.sync.outputs.conflicts }}
+        run: |
+          echo "::error::Custom patch replay has $CONFLICTS conflicting paths; review RELEASE_SYNC_REPORT.md on generated branch."
+          exit 1
+      - name: Set up Go
+        if: steps.sync.outputs.conflicts == '0'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - name: Test upstream Release plus custom patches (Go)
+        if: steps.sync.outputs.conflicts == '0'
+        working-directory: native
+        run: go test ./...
+      - name: Set up Flutter
+        if: steps.sync.outputs.conflicts == '0'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Test upstream Release plus custom patches (Flutter)
+        if: steps.sync.outputs.conflicts == '0'
+        run: |
+          flutter pub get --enforce-lockfile
+          dart analyze --fatal-infos lib test
+          flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Final instructions
+        if: success()
+        env:
+          BRANCH: ${{ steps.sync.outputs.branch }}
+        run: |
+          echo "Generated branch: $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tests passed. Review changes before merging into custom. No APK or GitHub Release was published." >> "$GITHUB_STEP_SUMMARY"
