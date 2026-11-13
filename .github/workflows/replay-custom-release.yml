@@ -42,6 +42,40 @@ jobs:
           name: release-sync-report-${{ github.run_number }}
           path: ${{ runner.temp }}/guo2-release-sync.md
           if-no-files-found: warn
+      - name: Diagnose Go compatibility on generated branch
+        if: steps.sync.outputs.conflicts != '0'
+        shell: bash
+        env:
+          SYNC_BRANCH: ${{ steps.sync.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/$SYNC_BRANCH"
+          git checkout --detach FETCH_HEAD
+          echo "Go compatibility diagnostics for $SYNC_BRANCH" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install Go for compatibility diagnosis
+        if: steps.sync.outputs.conflicts != '0'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - name: Capture unresolved Go compiler errors
+        if: steps.sync.outputs.conflicts != '0'
+        working-directory: native
+        shell: bash
+        run: |
+          set +e
+          go test ./... > "$RUNNER_TEMP/guo2-go-compatibility.log" 2>&1
+          result=$?
+          cat "$RUNNER_TEMP/guo2-go-compatibility.log"
+          echo "Go diagnostic exit code: $result" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Upload Go compatibility report
+        if: steps.sync.outputs.conflicts != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-compatibility-${{ github.run_number }}
+          path: ${{ runner.temp }}/guo2-go-compatibility.log
+          if-no-files-found: warn
       - name: Check unresolved custom patch conflicts
         if: steps.sync.outputs.conflicts != '0'
         env:
