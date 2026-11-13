@@ -2,8 +2,8 @@
 """Rebuild guo2 from the latest stable upstream Release and replay custom changes.
 
 The original custom branch is only read, never changed. Replay is path-by-path
-using Git's three-way patch application. Unresolved paths remain upstream and
-are reported instead of receiving speculative conflict resolutions.
+without Git merges. Custom-owned file overlays and deterministic edits are
+validated by CI before a generated branch may be promoted.
 """
 from __future__ import annotations
 
@@ -230,28 +230,37 @@ def main() -> int:
             return "retain upstream deletion of old implementation"
         return None
 
+    # Clean upstream Release rebuild, not a three-way merge.
+    # Custom is read-only and supplies legacy custom-owned files.
     applied: list[str] = []
     overrides: list[dict[str, str]] = []
     conflicts: list[dict[str, str]] = []
     for path in paths:
-        patch = git("diff", "--binary", base_sha, custom_sha, "--", path).stdout
-        if not patch:
+        rule = deterministic_override(path)
+        if rule is not None:
+            git("add", "-A", "--", path)
+            git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
+            overrides.append({"path": path, "rule": rule})
             continue
-        result = subprocess.run(["git", "apply", "--3way", "--index", "-"],
-                                input=patch, capture_output=True)
-        if result.returncode:
-            error = result.stderr.decode("utf-8", "replace").strip()
-            # Discard only the failed patch: each successful file is committed.
-            git("reset", "--hard", "HEAD")
-            rule = deterministic_override(path)
-            if rule is not None:
-                git("add", "-A")  # handles already-absent upstream paths safely
-                git("commit", "-m", "replay(custom): override " + path, "--allow-empty")
-                overrides.append({"path": path, "rule": rule})
-                continue
-            conflicts.append({"path": path, "error": error[:2000]})
-            continue
-        git("commit", "-m", "replay(custom): " + path, "--allow-empty")
+        file = pathlib.Path(path)
+        original = subprocess.run(
+            ["git", "show", "origin/custom:" + path],
+            capture_output=True,
+        )
+        if original.returncode == 0:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(original.stdout)
+        else:
+            existed = subprocess.run(
+                ["git", "cat-file", "-e", base_sha + ":" + path],
+                capture_output=True,
+            ).returncode == 0
+            if not existed:
+                raise SystemExit("Custom overlay unavailable: " + path)
+            if file.exists():
+                git("rm", "-f", "--", path)
+        git("add", "-A", "--", path)
+        git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
         applied.append(path)
 
     # The upstream 1.0.9 core exported these previously private types.
@@ -554,7 +563,7 @@ func init() {
         f"- Three-way merge base: `{base_sha}`",
         f"- Applied paths: **{len(applied)}** / {len(paths)}",
         f"- Deterministic overrides: **{len(overrides)}**",
-        f"- Conflicting paths: **{len(conflicts)}**",
+        "- Git merge conflicts: **not applicable (no merge performed)**",
         "- Source: the full official Release, not the previous migration branch.",
         "- Existing custom, main and upstream branches were not changed.",
         "",
@@ -568,7 +577,7 @@ func init() {
         *([f"- `{c['path']}`: `{c['error'].splitlines()[0][:180]}`" for c in conflicts]
           if conflicts else ["None."]),
         "",
-        "A clean patch replay does **not** guarantee build compatibility.",
+        "A conflict-free rebuild does **not** guarantee build compatibility.",
         "CI verification and review are mandatory before merging into custom.",
         "",
     ]
