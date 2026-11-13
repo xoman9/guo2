@@ -84,6 +84,26 @@ def main() -> int:
                 encoding="utf-8"
             )
             return "APP_FLAVOR and ALL_SOURCES interoperability"
+        if path == "lib/ui/widgets/source_bar.dart":
+            # Preserve the tested title-based channel switcher and include
+            # upstream's new leading widgets on phone, desktop and TV.
+            source = git("show", "origin/custom:" + path).stdout.decode("utf-8")
+            substitutions = [
+                ("    this.televisionLeading,\n    this.actions = const [],",
+                 "    this.televisionLeading,\n    this.leading = const [],\n    this.actions = const [],"),
+                ("  final Widget? televisionLeading;\n  final List<Widget> actions;",
+                 "  final Widget? televisionLeading;\n  final List<Widget> leading;\n  final List<Widget> actions;"),
+                ("actions: [search, ...actions],", "actions: [...leading, search, ...actions],"),
+                ("actions: [\n          SizedBox(", "actions: [\n          ...leading,\n          SizedBox("),
+                ("children: [\n            ?televisionLeading,\n            const Spacer(),",
+                 "children: [\n            ?televisionLeading,\n            ...leading,\n            const Spacer(),"),
+            ]
+            for old, new in substitutions:
+                if old not in source:
+                    return None
+                source = source.replace(old, new, 1)
+            file.write_text(source, encoding="utf-8")
+            return "source-title selector, upstream leading widgets and TV switcher"
         if path == "lib/ui/terms_page.dart":
             if file.exists():
                 git("rm", "-f", "--", path)
