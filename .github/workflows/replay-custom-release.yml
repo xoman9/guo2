@@ -43,7 +43,7 @@ jobs:
           path: ${{ runner.temp }}/guo2-release-sync.md
           if-no-files-found: warn
       - name: Stop when customization requires user decisions
-        if: steps.sync.outputs.failures != '0'
+        if: always() && steps.sync.outputs.failures != '' && steps.sync.outputs.failures != '0'
         env:
           FAILED: ${{ steps.sync.outputs.failures }}
           BRANCH: ${{ steps.sync.outputs.branch }}
