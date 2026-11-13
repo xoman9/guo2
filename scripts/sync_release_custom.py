@@ -250,6 +250,19 @@ def main() -> int:
         if file.exists() or tracked:
             git("add", "-A", "--", path)
 
+    def restore_rule_path(path: str) -> None:
+        """Revert a failed partial edit, including untracked generated files."""
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path],
+            capture_output=True,
+        ).returncode == 0
+        if tracked:
+            git("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
+        else:
+            candidate = pathlib.Path(path)
+            if candidate.is_file() or candidate.is_symlink():
+                candidate.unlink()
+
     # Known customization rules are required. On future upstream changes,
     # do not silently copy an old core/UI file if its reviewed rule fails.
     rule_paths = {
@@ -303,11 +316,11 @@ def main() -> int:
             except (ValueError, IndexError, OSError, subprocess.CalledProcessError) as exc:
                 # A rule may have partially edited its file before failing.
                 # Restore the upstream file, never commit a partial edit.
-                git("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
+                restore_rule_path(path)
                 failures.append({"path": path, "reason": f"Rule incompatible with upstream: {exc}"})
                 continue
             if rule is None:
-                git("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
+                restore_rule_path(path)
                 failures.append({"path": path, "reason": "Expected customization rule did not match upstream code."})
                 continue
             stage_if_present(path)
