@@ -277,6 +277,8 @@ def main() -> int:
         "var providerSourceForURL = ProviderSourceForURL\n"
         "var nativeSearchText = NativeSearchText\n"
         "var truncate = Truncate\n"
+        "var providerCoverAddress = ProviderCoverAddress\n"
+        "var validNativeCoverURL = ValidNativeCoverURL\n"
         "var providerDramaID = ProviderDramaID\n"
         "var providerChapterID = ProviderChapterID\n"
         "var splitProviderDramaID = SplitProviderDramaID\n",
@@ -364,6 +366,29 @@ func init() {
 """, encoding="utf-8")
     git("add", "--", str(custom_providers))
     git("commit", "-m", "feat(sync): register Tao, Liu and Xiao parsers in upstream Provider Registry")
+
+    # Keep the legacy site HTTP call signatures while forwarding to the new
+    # upstream Host request pipeline (including headers, proxies and limits).
+    compat_http = pathlib.Path("native/core/custom_http_compat.go")
+    compat_http.write_text("""package core
+
+import (
+ "context"
+ "golang.org/x/net/html"
+)
+
+func (d *Downloader) fetchProviderText(ctx context.Context, address, referer string) (string, error) {
+ response, err := d.FetchText(ctx, TextRequest{URL: address, Referer: referer})
+ if err != nil { return "", err }
+ return response.Body, nil
+}
+
+func (d *Downloader) fetchProviderPage(ctx context.Context, address, referer, agent string) (*html.Node, string, error) {
+ return FetchHostPage(ctx, d, address, referer, agent)
+}
+""", encoding="utf-8")
+    git("add", "--", str(compat_http))
+    git("commit", "-m", "compat(sync): forward legacy page requests into upstream Host")
 
     report = [
         "# Upstream Release → guo2 custom replay",
