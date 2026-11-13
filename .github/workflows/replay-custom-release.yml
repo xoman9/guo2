@@ -106,6 +106,43 @@ jobs:
           flutter pub get --enforce-lockfile
           dart analyze --fatal-infos lib test
           flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
+      - name: Verify upstream all-sources build links custom module
+        if: steps.sync.outputs.conflicts == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "import sys;sys.path.insert(0,'scripts');from app_build import link_sources;link_sources(None)"
+          grep -q 'duanjuapp/native/sources_custom' native/bridge/sources_gen.go
+          if grep -q 'sources_example' native/bridge/sources_gen.go; then
+            echo "::error::Refusing upstream synthetic example sources."
+            exit 1
+          fi
+          (cd native && go test -tags=zhenguojian ./...)
+      - name: Verify original custom channel coverage
+        if: steps.sync.outputs.conflicts == '0'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          expected = set("""
+          hongguo hanxiaoquan guipian sorani huangdou huangju yeguo
+          lujj31 liuguo xiaoguo youguo meiguo yingguo luguo liguo
+          juguo ningguo mangguo chengguodj jiaoguo dsd jinguoduanju
+          jinguo heitao beabox huangguo-video huangguoai cloudfront
+          """.split())
+          path = Path("native/sources_custom/flavor_zhenguojian.go")
+          selected = set(re.findall(r'"([a-z][a-z0-9-]*)"', path.read_text(encoding="utf-8")))
+          missing = sorted(expected - selected)
+          summary = Path(__import__("os").environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as stream:
+              stream.write(f"\nCustom source parity: {len(expected)-len(missing)}/{len(expected)}\n")
+              if missing:
+                  stream.write("Missing: " + ", ".join(missing) + "\n")
+          print(f"Expected {len(expected)} historical sources; selected {len(expected)-len(missing)}.")
+          if missing:
+              raise SystemExit("Missing custom source modules: " + ", ".join(missing))
+          PY
       - name: Final instructions
         if: success()
         env:
