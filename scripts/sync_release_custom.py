@@ -384,6 +384,19 @@ def main() -> int:
             continue
         if path not in overlay_paths:
             continue
+        # A verbatim overlay is safe only when upstream did not change that
+        # tracked file since the historical reference. Otherwise we must port
+        # the custom behavior, never silently replace new Release features.
+        upstream_changed = subprocess.run(
+            ["git", "diff", "--quiet", base_sha, release_sha, "--", path],
+            capture_output=True,
+        ).returncode != 0
+        if upstream_changed:
+            failures.append({
+                "path": path,
+                "reason": "Both the upstream Release and old custom changed this file; automatic legacy overwrite is unsafe.",
+            })
+            continue
         file = pathlib.Path(path)
         original = subprocess.run(
             ["git", "show", "origin/custom:" + path],
