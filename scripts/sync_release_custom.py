@@ -758,49 +758,26 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
         "module duanjuapp/native/sources_custom\n\ngo 1.24.1\n",
         encoding="utf-8"
     )
-    # The 28-source historical build consists of official Release sources
-    # plus legacy guo2 additions. Retain both sets, not only 13 custom IDs.
-    historical_sources = [
-        "hongguo", "hanxiaoquan", "guipian", "sorani", "huangdou",
-        "huangju", "yeguo", "lujj31", "liuguo", "xiaoguo",
-        "youguo", "meiguo", "yingguo", "luguo", "liguo", "juguo",
-        "ningguo", "mangguo", "chengguodj", "jiaoguo", "dsd",
-        "jinguoduanju", "jinguo", "heitao", "beabox",
-        "huangguo-video", "huangguoai", "cloudfront",
+    # This script adds ONLY guo2's 13 extra source adapters.
+    # Upstream Release source selection is not reconstructed or reimplemented.
+    extra_sources = [
+        "lujj31", "liuguo", "xiaoguo",
+        "youguo", "meiguo", "yingguo", "luguo", "liguo",
+        "juguo", "ningguo", "mangguo", "chengguodj", "jiaoguo",
     ]
-    if len(historical_sources) != 28 or len(set(historical_sources)) != 28:
-        raise SystemExit("Historical source manifest is incomplete or contains duplicates")
-    source_go_ids = ",\n  ".join(json.dumps(source) for source in historical_sources)
+    if len(extra_sources) != 13 or len(set(extra_sources)) != 13:
+        raise SystemExit("guo2 extra-source manifest is incomplete or duplicated")
+    source_go_ids = ",\n  ".join(json.dumps(source) for source in extra_sources)
     (source_module / "flavor_zhenguojian.go").write_text(
         "//go:build zhenguojian\n\n"
         "package custom\n\n"
-        "import \"duanjuapp/native/core\"\n\n"
-        "func init() {\n core.RegisterFlavor(\"zhenguojian\", []string{\n  "
+        'import "duanjuapp/native/core"\n\n'
+        'func init() {\n core.RegisterFlavor("zhenguojian", []string{\n  '
         + source_go_ids + ",\n })\n}\n",
         encoding="utf-8",
     )
-    tagged_test = pathlib.Path("native/core/custom_full_sources_test.go")
-    tagged_test.write_text(
-        "//go:build zhenguojian\n\n"
-        "package core\n\nimport \"testing\"\n\n"
-        "func TestHistorical28SourcesAvailable(t *testing.T) {\n"
-        " d := &Downloader{cfg: DefaultConfig()}\n"
-        " ids := []string{\n  " + source_go_ids + ",\n }\n"
-        " if len(ids) != 28 { t.Fatalf(\"expected 28, got %d\", len(ids)) }\n"
-        " seen := map[string]bool{}\n"
-        " for _, id := range ids {\n"
-        "  if seen[id] { t.Fatalf(\"duplicate source %s\", id) }\n"
-        "  seen[id] = true\n"
-        "  descriptor, exists := registeredDescriptor(id)\n"
-        "  if !exists || descriptor.ID != id { t.Errorf(\"unregistered: %s\", id); continue }\n"
-        "  provider, exists := d.provider(id)\n"
-        "  if !exists || provider == nil { t.Errorf(\"missing provider: %s\", id); continue }\n"
-        "  if provider.Descriptor().ID != id { t.Errorf(\"wrong provider: %s\", id) }\n"
-        "  if !nativeSourceAvailable(id) { t.Errorf(\"unavailable: %s\", id) }\n"
-        " }\n}\n",
-        encoding="utf-8",
-    )
-    git("add", "--", str(tagged_test))
+    # Functional coverage is enforced by custom_registry_sources_test.go:
+    # it checks 13 real Provider instances, not mere display names.
     git("add", "--", str(source_module))
     git("commit", "-m", "feat(sync): provide real custom source module for all-sources builds")
 
