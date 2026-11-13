@@ -32,7 +32,7 @@ jobs:
               assert key in source, f'missing customization phase: {key}'
           for key in ('RELEASE_SYNC_REPORT.md', 'if failures:', 'restore_rule_path(path)'):
               assert key in source, f'missing failure handling: {key}'
-          assert 'TestReleaseReplayCustomChannelsRegistered' in source, '13 extra-source provider test missing'
+          assert 'TestReleaseReplayCustomChannelsRegistered' in source, 'added-source provider test missing'
           assert '"com.duanju.coexist"' in source, 'coexist package name missing'
           assert '"failures=0' in source, 'success output contract missing'
           print('Release rebuild structural guards passed')
@@ -80,7 +80,7 @@ jobs:
             echo "::error::Example-only providers would produce an incomplete guo2 build."
             exit 1
           fi
-      - name: Test guo2 extra Provider adapters (13)
+      - name: Test guo2 previously added Provider adapters
         if: steps.replay.outcome == 'success'
         working-directory: native
         shell: bash
