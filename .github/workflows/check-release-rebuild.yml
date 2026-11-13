@@ -115,7 +115,7 @@ jobs:
               if grep -q 'unregistered:' "$SOURCE_LOG"; then
                 echo
                 echo "**Unregistered historical channels (requires porting actual Provider implementations):**"
-                grep -E 'unregistered: ' "$SOURCE_LOG" | sed -E 's/.*unregistered: ([a-z0-9-]+).*/- \`\1\`/' | sort -u
+                awk '/unregistered: / {print "- `" $NF "`"}' "$SOURCE_LOG" | sort -u
                 echo
                 echo "Decision: port these legacy implementations to the current upstream Host/Provider Registry; do not add names without working adapters or silently delete channels."
               fi
