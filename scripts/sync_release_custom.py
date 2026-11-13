@@ -230,6 +230,16 @@ def main() -> int:
             return "retain upstream deletion of old implementation"
         return None
 
+    def stage_if_present(path: str) -> None:
+        """Stage an existing or tracked path; an already-absent path needs no staging."""
+        file = pathlib.Path(path)
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path],
+            capture_output=True,
+        ).returncode == 0
+        if file.exists() or tracked:
+            git("add", "-A", "--", path)
+
     # Known customization rules are required. On future upstream changes,
     # do not silently copy an old core/UI file if its reviewed rule fails.
     rule_paths = {
@@ -286,7 +296,7 @@ def main() -> int:
             if rule is None:
                 failures.append({"path": path, "reason": "Expected customization rule did not match upstream code."})
                 continue
-            git("add", "-A", "--", path)
+            stage_if_present(path)
             git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
             overrides.append({"path": path, "rule": rule})
             continue
@@ -310,7 +320,7 @@ def main() -> int:
                 continue
             if file.exists():
                 git("rm", "-f", "--", path)
-        git("add", "-A", "--", path)
+        stage_if_present(path)
         git("commit", "-m", "customize(rebuild): " + path, "--allow-empty")
         applied.append(path)
 
