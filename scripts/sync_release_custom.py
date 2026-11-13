@@ -69,6 +69,23 @@ def main() -> int:
             text = text.replace('?: "com.guoapp.all"', '?: "com.duanju.coexist"', 1)
             file.write_text(text, encoding="utf-8")
             return "coexist branding and application ID"
+        if path == "native/core/app_categories.go":
+            text = file.read_text(encoding="utf-8")
+            if "func ValidNativeCategory(" not in text or ".Categories(ctx, force)" not in text:
+                return None
+            return "retain upstream Registry category dispatch; custom site validators live in provider adapters"
+        if path == "native/core/app_runtime.go":
+            text = file.read_text(encoding="utf-8")
+            if "func (engine *nativeEngine) nativeDetail(" not in text or "p.Detail(ctx, sourceID)" not in text:
+                return None
+            if "func NativeNormalize(" not in text:
+                return None
+            return "retain upstream Registry runtime; custom detail and search use registered providers"
+        if path == "native/core/provider_media.go":
+            text = file.read_text(encoding="utf-8")
+            if "func (d *Downloader) resolveProviderMedia(" not in text or "p.ResolveMedia(ctx, task)" not in text:
+                return None
+            return "retain upstream media pipeline; custom playback uses Provider.ResolveMedia"
         if path == "lib/models.dart":
             text = file.read_text(encoding="utf-8")
             if "static void install(Iterable<SourceSite> sites)" not in text:
