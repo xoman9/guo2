@@ -85,14 +85,14 @@ jobs:
         working-directory: native
         run: go test -tags=zhenguojian ./...
       - name: Setup Flutter
-        if: steps.replay.outcome == 'success'
+        if: always() && steps.replay.outcome == 'success'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Verify Flutter analyzer and widget tests
-        if: steps.replay.outcome == 'success'
+        if: always() && steps.replay.outcome == 'success'
         run: |
           set -euo pipefail
           flutter pub get --enforce-lockfile
