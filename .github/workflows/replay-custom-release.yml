@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Rebuild from latest stable upstream Release and apply custom patches
+      - name: Rebuild from latest stable upstream Release and apply reviewed customizations
         id: sync
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,72 +42,39 @@ jobs:
           name: release-sync-report-${{ github.run_number }}
           path: ${{ runner.temp }}/guo2-release-sync.md
           if-no-files-found: warn
-      - name: Diagnose Go compatibility on generated branch
-        if: steps.sync.outputs.conflicts != '0'
-        shell: bash
+      - name: Stop when customization requires user decisions
+        if: steps.sync.outputs.failures != '0'
         env:
-          SYNC_BRANCH: ${{ steps.sync.outputs.branch }}
+          FAILED: ${{ steps.sync.outputs.failures }}
+          BRANCH: ${{ steps.sync.outputs.branch }}
         run: |
-          set -euo pipefail
-          git fetch origin "refs/heads/$SYNC_BRANCH"
-          git checkout --detach FETCH_HEAD
-          echo "Go compatibility diagnostics for $SYNC_BRANCH" >> "$GITHUB_STEP_SUMMARY"
-      - name: Install Go for compatibility diagnosis
-        if: steps.sync.outputs.conflicts != '0'
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: native/go.mod
-          cache-dependency-path: native/go.sum
-      - name: Capture unresolved Go compiler errors
-        if: steps.sync.outputs.conflicts != '0'
-        working-directory: native
-        shell: bash
-        run: |
-          set +e
-          go test ./... > "$RUNNER_TEMP/guo2-go-compatibility.log" 2>&1
-          result=$?
-          cat "$RUNNER_TEMP/guo2-go-compatibility.log"
-          echo "Go diagnostic exit code: $result" >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-      - name: Upload Go compatibility report
-        if: steps.sync.outputs.conflicts != '0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-compatibility-${{ github.run_number }}
-          path: ${{ runner.temp }}/guo2-go-compatibility.log
-          if-no-files-found: warn
-      - name: Check unresolved custom patch conflicts
-        if: steps.sync.outputs.conflicts != '0'
-        env:
-          CONFLICTS: ${{ steps.sync.outputs.conflicts }}
-        run: |
-          echo "::error::Custom patch replay has $CONFLICTS conflicting paths; review RELEASE_SYNC_REPORT.md on generated branch."
+          echo "::error::${FAILED} customizations need decisions. Read RELEASE_SYNC_REPORT.md on ${BRANCH}; do not auto-merge or publish."
           exit 1
       - name: Set up Go
-        if: steps.sync.outputs.conflicts == '0'
+        if: steps.sync.outputs.failures == '0'
         uses: actions/setup-go@v5
         with:
           go-version-file: native/go.mod
           cache-dependency-path: native/go.sum
-      - name: Test upstream Release plus custom patches (Go)
-        if: steps.sync.outputs.conflicts == '0'
+      - name: Test upstream Release plus customizations (Go)
+        if: steps.sync.outputs.failures == '0'
         working-directory: native
         run: go test ./...
       - name: Set up Flutter
-        if: steps.sync.outputs.conflicts == '0'
+        if: steps.sync.outputs.failures == '0'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Test upstream Release plus custom patches (Flutter)
-        if: steps.sync.outputs.conflicts == '0'
+        if: steps.sync.outputs.failures == '0'
         run: |
           flutter pub get --enforce-lockfile
           dart analyze --fatal-infos lib test
           flutter test --dart-define=DISABLE_REMOTE_IMAGES=true --dart-define=ALL_SOURCES=true
       - name: Verify upstream all-sources build links custom module
-        if: steps.sync.outputs.conflicts == '0'
+        if: steps.sync.outputs.failures == '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +86,7 @@ jobs:
           fi
           (cd native && go test -tags=zhenguojian ./...)
       - name: Verify original custom channel coverage
-        if: steps.sync.outputs.conflicts == '0'
+        if: steps.sync.outputs.failures == '0'
         shell: bash
         run: |
           python - <<'PY'
