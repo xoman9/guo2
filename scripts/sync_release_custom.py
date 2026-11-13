@@ -270,7 +270,11 @@ def main() -> int:
         "var providerReleaseDate = ProviderReleaseDate\n"
         "var providerChinaTime = ProviderChinaTime\n"
         "var providerSourceForURL = ProviderSourceForURL\n"
-        "var nativeSearchText = NativeSearchText\n",
+        "var nativeSearchText = NativeSearchText\n"
+        "var truncate = Truncate\n"
+        "var providerDramaID = ProviderDramaID\n"
+        "var providerChapterID = ProviderChapterID\n"
+        "var splitProviderDramaID = SplitProviderDramaID\n",
         encoding="utf-8"
     )
     git("add", "--", str(compat))
