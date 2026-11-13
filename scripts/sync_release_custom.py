@@ -178,8 +178,8 @@ def main() -> int:
         builder: (context) => AlertDialog(
           title: const Text('舊下載目錄仍有檔案'),
           content: SelectableText(
-            '新目錄遷移完成，但舊目錄清理失敗。\\\\n'
-            '\${leftover.path}\\\\n\${leftover.reason}\\\\n'
+            '新目錄遷移完成，但舊目錄清理失敗。\\n'
+            '${leftover.path}\\n${leftover.reason}\\n'
             '請確認後手動清理。',
           ),
           actions: [
