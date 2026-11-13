@@ -61,6 +61,46 @@ def main() -> int:
     def deterministic_override(path: str) -> str | None:
         """Apply reviewed conflict rules; never replace core files blindly."""
         file = pathlib.Path(path)
+        if path == "lib/ui/app.dart":
+            # Only remove the old terms gate; keep all new upstream UI features
+            # such as pure-black themes and new navigation behavior.
+            text = file.read_text(encoding="utf-8")
+            old_import = "import 'terms_page.dart';\n"
+            old_gate = "        LocalStore(acceptedTerms: < termsVersion) => TermsPage(store: store),\n"
+            if text.count(old_import) != 1 or text.count(old_gate) != 1:
+                return None
+            text = text.replace(old_import, "", 1).replace(old_gate, "", 1)
+            file.write_text(text, encoding="utf-8")
+            return "remove terms gate without overwriting upstream app UI"
+        if path == "test/local_store_access_test.dart":
+            # Preserve new upstream test fixtures and only adapt build naming.
+            text = file.read_text(encoding="utf-8")
+            expected = "expect(appName, allSourcesEnabled ? '真果鉴' : '红果鉴');"
+            replacement = (
+                "expect(appName, allSourcesEnabled\n"
+                "    ? const String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME',\n"
+                "        defaultValue: '小果影視-共存版')\n"
+                "    : '红果鉴');"
+            )
+            if text.count(expected) != 1:
+                return None
+            file.write_text(text.replace(expected, replacement, 1), encoding="utf-8")
+            return "preserve upstream test fixtures with custom coexist build name"
+        if path == "README.md":
+            # Do not replace current upstream documentation with a stale copy.
+            text = file.read_text(encoding="utf-8")
+            heading = "## guo2 共存版客製說明"
+            if heading in text:
+                return None
+            text += (
+                "\n" + heading + "\n\n"
+                "本分支使用最新正式上游 Release 為基底，按介面、下載、合併、"
+                "站源、設定、共存版順序套用客製修改；不以 Git 三方合併覆蓋上游。\n"
+                "Android 共存版使用 com.duanju.coexist，簽章及 ARM64/v7a "
+                "構建結果以 GitHub Actions 實際驗證為準。\n"
+            )
+            file.write_text(text, encoding="utf-8")
+            return "append coexist notes without reverting upstream documentation"
         if path == "scripts/app_build.py":
             text = file.read_text(encoding="utf-8")
             before = "EXAMPLE_SOURCES = NATIVE_ROOT / 'sources_example'"
@@ -270,6 +310,9 @@ def main() -> int:
         "lib/app_build.dart",
         "scripts/app_build.py",
         "lib/models.dart",
+        "lib/ui/app.dart",
+        "README.md",
+        "test/local_store_access_test.dart",
         "lib/ui/settings/storage_view.dart",
         "lib/ui/terms_page.dart",
         "lib/ui/widgets/source_bar.dart",
@@ -284,12 +327,10 @@ def main() -> int:
     # All newly changed paths must be reviewed before inclusion.
     overlay_paths = {
         ".github/workflows/build-custom.yml",
-        "README.md",
         "android/app/src/main/AndroidManifest.xml",
         "android/app/src/main/kotlin/com/guoapp/MainActivity.kt",
         "lib/merge_location.dart",
         "lib/merge_queue.dart",
-        "lib/ui/app.dart",
         "lib/ui/settings/sources_view.dart",
         "lib/ui/widgets/page_header.dart",
         "native/core/provider_apk391_categories.go",
@@ -301,7 +342,6 @@ def main() -> int:
         "native/core/provider_lujj31_player.go",
         "native/core/provider_lujj31_title_test.go",
         "native/core/provider_xiaoguo.go",
-        "test/local_store_access_test.dart",
     }
     # Preserve the agreed customization order from the earlier guo2 workflow.
     # A phase is considered complete only after its owned paths are processed.
