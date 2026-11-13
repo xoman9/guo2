@@ -301,9 +301,13 @@ def main() -> int:
             try:
                 rule = deterministic_override(path)
             except (ValueError, IndexError, OSError, subprocess.CalledProcessError) as exc:
+                # A rule may have partially edited its file before failing.
+                # Restore the upstream file, never commit a partial edit.
+                git("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
                 failures.append({"path": path, "reason": f"Rule incompatible with upstream: {exc}"})
                 continue
             if rule is None:
+                git("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
                 failures.append({"path": path, "reason": "Expected customization rule did not match upstream code."})
                 continue
             stage_if_present(path)
