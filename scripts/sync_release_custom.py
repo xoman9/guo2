@@ -104,6 +104,98 @@ def main() -> int:
                 source = source.replace(old, new, 1)
             file.write_text(source, encoding="utf-8")
             return "source-title selector, upstream leading widgets and TV switcher"
+        if path == "native/core/app_storage.go":
+            text = file.read_text(encoding="utf-8")
+            changes = [
+                ('target = filepath.Join(filepath.Clean(resolved), "zhenguojian-downloads")',
+                 'target = filepath.Clean(resolved)'),
+                ('''if _, err := os.Stat(target); err == nil {
+		manager.mu.Unlock()
+		return "", "", errors.New("目标中已有应用下载目录，请选择空目录，避免覆盖文件")
+	} else if !os.IsNotExist(err) {
+		manager.mu.Unlock()
+		return "", "", errors.New("无法检查目标目录：" + err.Error())
+	}''',
+                 '''targetExists := false
+	if entries, err := os.ReadDir(target); err == nil {
+		targetExists = true
+		if len(entries) != 0 {
+			manager.mu.Unlock()
+			return "", "", errors.New("所選資料夾不是空的，請選擇空資料夾避免覆蓋")
+		}
+	} else if !os.IsNotExist(err) {
+		manager.mu.Unlock()
+		return "", "", errors.New("無法讀取所選資料夾，請檢查權限")
+	}'''),
+                ('''if err := os.Mkdir(target, 0700); err != nil {
+		return "", "", errors.New("无法创建目标目录，请检查权限或选择其他位置")
+	}''',
+                 '''if !targetExists {
+		if err := os.Mkdir(target, 0700); err != nil {
+			return "", "", errors.New("無法建立目標資料夾，請檢查權限")
+		}
+	}
+	cleanupNewTarget := func() {
+		if !targetExists {
+			_ = os.RemoveAll(target)
+		}
+	}'''),
+            ]
+            for old, new in changes:
+                if text.count(old) != 1:
+                    return None
+                text = text.replace(old, new, 1)
+            start = text.index("func (engine *nativeEngine) moveDownloads(")
+            end = text.index("func nativePathsOverlap", start)
+            section = text[start:end]
+            if section.count("_ = os.RemoveAll(target)") != 4:
+                return None
+            first = section.index("_ = os.RemoveAll(target)") + len("_ = os.RemoveAll(target)")
+            section = section[:first] + section[first:].replace("_ = os.RemoveAll(target)", "cleanupNewTarget()")
+            text = text[:start] + section + text[end:]
+            file.write_text(text, encoding="utf-8")
+            return "selected directory itself, empty-folder safety, upstream cleanup return"
+        if path == "lib/ui/settings/storage_view.dart":
+            text = git("show", "origin/custom:" + path).stdout.decode("utf-8")
+            old = "      await repository.moveDownloads(parent);"
+            if text.count(old) != 1:
+                return None
+            text = text.replace(old, "      leftover = await repository.moveDownloads(parent);", 1)
+            a = "    String? failureMessage;\n    try {"
+            if text.count(a) != 1:
+                return None
+            text = text.replace(a, "    String? failureMessage;\n    var leftover = (path: '', reason: '');\n    try {", 1)
+            pos = text.index("  Future<bool> _migrate(")
+            end = text.index("  @override\n  Widget build", pos)
+            body = text[pos:end]
+            marker = "    return true;\n  }\n"
+            if body.count(marker) != 1:
+                return None
+            warning = """
+    if (leftover.path.isNotEmpty && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('舊下載目錄仍有檔案'),
+          content: SelectableText(
+            '新目錄遷移完成，但舊目錄清理失敗。\\\\n'
+            '\${leftover.path}\\\\n\${leftover.reason}\\\\n'
+            '請確認後手動清理。',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    }
+"""
+            body = body.replace(marker, warning + marker, 1)
+            text = text[:pos] + body + text[end:]
+            file.write_text(text, encoding="utf-8")
+            return "Android storage authorization and merge-location with cleanup warning"
         if path == "lib/ui/terms_page.dart":
             if file.exists():
                 git("rm", "-f", "--", path)
