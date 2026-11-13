@@ -107,7 +107,7 @@ def main() -> int:
             git("reset", "--hard", "HEAD")
             rule = deterministic_override(path)
             if rule is not None:
-                git("add", "-A", "--", path)
+                git("add", "-A")  # handles already-absent upstream paths safely
                 git("commit", "-m", "replay(custom): override " + path, "--allow-empty")
                 overrides.append({"path": path, "rule": rule})
                 continue
@@ -119,9 +119,9 @@ def main() -> int:
     report = [
         "# Upstream Release → guo2 custom replay",
         "",
-        f"- Upstream Release: \`{tag}\` (\`{release_sha}\`)",
-        f"- Original custom: \`{custom_sha}\`",
-        f"- Three-way merge base: \`{base_sha}\`",
+        f"- Upstream Release: `{tag}` (`{release_sha}`)",
+        f"- Original custom: `{custom_sha}`",
+        f"- Three-way merge base: `{base_sha}`",
         f"- Applied paths: **{len(applied)}** / {len(paths)}",
         f"- Deterministic overrides: **{len(overrides)}**",
         f"- Conflicting paths: **{len(conflicts)}**",
@@ -129,13 +129,13 @@ def main() -> int:
         "- Existing custom, main and upstream branches were not changed.",
         "",
         "## Applied paths",
-        *["- \`" + p + "\`" for p in applied],
+        *["- `" + p + "`" for p in applied],
         "",
         "## Deterministic overrides",
         *[f"- {entry['path']}: {entry['rule']}" for entry in overrides],
         "",
         "## Paths requiring conflict resolution",
-        *([f"- \`{c['path']}\`: \`{c['error'].splitlines()[0][:180]}\`" for c in conflicts]
+        *([f"- `{c['path']}`: `{c['error'].splitlines()[0][:180]}`" for c in conflicts]
           if conflicts else ["None."]),
         "",
         "A clean patch replay does **not** guarantee build compatibility.",
