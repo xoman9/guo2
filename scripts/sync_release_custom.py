@@ -58,7 +58,42 @@ def main() -> int:
     # This namespace is generated solely by this script. Never force the custom branch.
     git("checkout", "-B", target_branch)
 
+    def deterministic_override(path: str) -> str | None:
+        """Apply reviewed conflict rules; never replace core files blindly."""
+        file = pathlib.Path(path)
+        if path == "android/app/build.gradle.kts":
+            text = file.read_text(encoding="utf-8")
+            if '?: "真果鉴"' not in text or '?: "com.guoapp.all"' not in text:
+                return None
+            text = text.replace('?: "真果鉴"', '?: "小果影視-共存版"', 1)
+            text = text.replace('?: "com.guoapp.all"', '?: "com.duanju.coexist"', 1)
+            file.write_text(text, encoding="utf-8")
+            return "coexist branding and application ID"
+        if path == "lib/app_build.dart":
+            file.write_text(
+                "const allSourcesEnabled = bool.fromEnvironment('ALL_SOURCES');\n"
+                "const configuredAppFlavor = String.fromEnvironment('APP_FLAVOR');\n"
+                "const appFlavor = configuredAppFlavor != ''\n"
+                "    ? configuredAppFlavor\n"
+                "    : (allSourcesEnabled ? 'zhenguojian' : 'hongguojian');\n"
+                "const appName = appFlavor == 'hongguojian'\n"
+                "    ? '红果鉴'\n"
+                "    : String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME',\n"
+                "        defaultValue: '小果影視-共存版');\n"
+                "const appSlug = appFlavor;\n",
+                encoding="utf-8"
+            )
+            return "APP_FLAVOR and ALL_SOURCES interoperability"
+        if path == "lib/ui/terms_page.dart":
+            if file.exists():
+                git("rm", "-f", "--", path)
+            return "remove terms page"
+        if path in {"native/core/app_storage_test.go", "native/core/provider_huangguo.go"} and not file.exists():
+            return "retain upstream deletion of old implementation"
+        return None
+
     applied: list[str] = []
+    overrides: list[dict[str, str]] = []
     conflicts: list[dict[str, str]] = []
     for path in paths:
         patch = git("diff", "--binary", base_sha, custom_sha, "--", path).stdout
@@ -68,9 +103,15 @@ def main() -> int:
                                 input=patch, capture_output=True)
         if result.returncode:
             error = result.stderr.decode("utf-8", "replace").strip()
-            conflicts.append({"path": path, "error": error[:2000]})
             # Discard only the failed patch: each successful file is committed.
             git("reset", "--hard", "HEAD")
+            rule = deterministic_override(path)
+            if rule is not None:
+                git("add", "-A", "--", path)
+                git("commit", "-m", "replay(custom): override " + path, "--allow-empty")
+                overrides.append({"path": path, "rule": rule})
+                continue
+            conflicts.append({"path": path, "error": error[:2000]})
             continue
         git("commit", "-m", "replay(custom): " + path, "--allow-empty")
         applied.append(path)
@@ -82,12 +123,16 @@ def main() -> int:
         f"- Original custom: \`{custom_sha}\`",
         f"- Three-way merge base: \`{base_sha}\`",
         f"- Applied paths: **{len(applied)}** / {len(paths)}",
+        f"- Deterministic overrides: **{len(overrides)}**",
         f"- Conflicting paths: **{len(conflicts)}**",
         "- Source: the full official Release, not the previous migration branch.",
         "- Existing custom, main and upstream branches were not changed.",
         "",
         "## Applied paths",
         *["- \`" + p + "\`" for p in applied],
+        "",
+        "## Deterministic overrides",
+        *[f"- {entry['path']}: {entry['rule']}" for entry in overrides],
         "",
         "## Paths requiring conflict resolution",
         *([f"- \`{c['path']}\`: \`{c['error'].splitlines()[0][:180]}\`" for c in conflicts]
