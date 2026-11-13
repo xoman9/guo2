@@ -97,11 +97,11 @@ def main() -> int:
             return "retain upstream dynamic SourceSite model; custom sources come from Registry"
         if path == "lib/app_build.dart":
             file.write_text(
-                "const allSourcesEnabled = bool.fromEnvironment('ALL_SOURCES');\n"
+                "const _allSourcesDefineEnabled = bool.fromEnvironment('ALL_SOURCES');\n"
                 "const configuredAppFlavor = String.fromEnvironment('APP_FLAVOR');\n"
                 "const appFlavor = configuredAppFlavor != ''\n"
                 "    ? configuredAppFlavor\n"
-                "    : (allSourcesEnabled ? 'zhenguojian' : 'hongguojian');\n"
+                "    : (_allSourcesDefineEnabled ? 'zhenguojian' : 'hongguojian');\n"
                 "const appName = appFlavor == 'hongguojian'\n"
                 "    ? '红果鉴'\n"
                 "    : String.fromEnvironment('ZHENGUOJIAN_DISPLAY_NAME',\n"
