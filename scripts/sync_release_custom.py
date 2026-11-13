@@ -39,6 +39,7 @@ def main() -> int:
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,90}", tag):
         raise SystemExit(f"Unexpected release tag: {tag!r}")
 
+    dry_run = os.environ.get("SYNC_DRY_RUN") == "1"
     target_branch = "sync/release-" + tag
     git("config", "user.name", "guo2 release-sync bot")
     git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
@@ -469,6 +470,7 @@ def main() -> int:
             "- Customization order: UI → Downloads → Merge → Providers → Settings → Coexist.",
             "- No merge conflict; these are customization compatibility questions.",
             "- No automatic fallback to old upstream core/UI files.",
+            f"- Dry run (no remote writes): {dry_run}.",
             "",
             "## Please decide how to modify these items",
         ]
@@ -484,7 +486,8 @@ def main() -> int:
         report_path.write_text(report_text, encoding="utf-8")
         git("add", "--", str(report_path))
         git("commit", "-m", "docs(sync): list customization decisions required")
-        git("push", "--force-with-lease", "origin", "HEAD:refs/heads/" + target_branch)
+        if not dry_run:
+            git("push", "--force-with-lease", "origin", "HEAD:refs/heads/" + target_branch)
         if out_file := os.environ.get("SYNC_REPORT"):
             pathlib.Path(out_file).write_text(report_text, encoding="utf-8")
         if out := os.environ.get("GITHUB_OUTPUT"):
@@ -812,6 +815,7 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
         "- Git merge conflicts: **not applicable (no merge performed)**",
         "- Source: the full official Release, not the previous migration branch.",
         "- Existing custom, main and upstream branches were not changed.",
+        f"- Dry run (no remote writes): {dry_run}.",
         "",
         "## Customization phase results",
         *[f"- {phase}: {len(items)} paths processed" for phase, items in phase_results.items()],
@@ -839,7 +843,8 @@ func TestReleaseReplayCustomChannelsRegistered(t *testing.T) {
     report_in_branch.write_text(output, encoding="utf-8")
     git("add", "RELEASE_SYNC_REPORT.md")
     git("commit", "-m", "docs(sync): record automated custom replay result")
-    git("push", "--force-with-lease", "origin", "HEAD:refs/heads/" + target_branch)
+    if not dry_run:
+        git("push", "--force-with-lease", "origin", "HEAD:refs/heads/" + target_branch)
 
     if output_path := os.environ.get("GITHUB_OUTPUT"):
         with open(output_path, "a", encoding="utf-8") as stream:
