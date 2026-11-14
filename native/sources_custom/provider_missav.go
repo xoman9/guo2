@@ -13,7 +13,7 @@ import (
 const missSource="missav"
 const missBase="https://missav.com"
 var missPath=regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,160}$`)
-var missDesc=core.SourceDescriptor{ID:missSource,Name:"MissAV+",BaseURL:missBase,DefaultOff:true,NoHostRotation:true,Description:"TVBox csp_Miss 分类及详情解析；播放页需合法的独立解析器",ValidCategory:func(s string)bool{return s==""||missPath.MatchString(s)}}
+var missDesc=core.SourceDescriptor{ID:missSource,Name:"MissAV+",BaseURL:missBase,DefaultOff:true,NoHostRotation:true,BrowserFingerprint:true,Description:"TVBox csp_Miss 分类及详情解析；播放页需合法的独立解析器",ValidCategory:func(s string)bool{return s==""||missPath.MatchString(s)}}
 type missProvider struct{host core.Host}
 var _ core.Provider=(*missProvider)(nil)
 var _ core.Searcher=(*missProvider)(nil)
