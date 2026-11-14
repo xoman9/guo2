@@ -22,7 +22,8 @@ func tvText(root *html.Node,tag,class string)string{
  return ""
 }
 func tvSafeURL(base,raw string)string{
- parsed,e:=url.Parse(strings.TrimSpace(raw));if e!=nil||parsed.User!=nil{return ""}
+ raw=strings.TrimSpace(raw);if raw==""{return ""}
+ parsed,e:=url.Parse(raw);if e!=nil||parsed.User!=nil{return ""}
  if parsed.Scheme!=""&&parsed.Scheme!="http"&&parsed.Scheme!="https"{return ""}
  b,e:=url.Parse(base);if e!=nil{return ""}
  out:=b.ResolveReference(parsed)
