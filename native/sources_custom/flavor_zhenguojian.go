@@ -9,6 +9,6 @@ func init() {
   "lujj31", "liuguo", "xiaoguo",
   "youguo", "meiguo", "yingguo", "luguo", "liguo",
   "juguo", "ningguo", "mangguo", "chengguodj", "jiaoguo",
-  "laosebizy.com",
+  "laosebizy.com", "jable", "missav",
  })
 }
