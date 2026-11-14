@@ -1,0 +1,113 @@
+name: Android provider repair APK test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: provider-repair-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+      ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
+      ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
+      ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+          accept-android-sdk-licenses: true
+      - run: sdkmanager 'ndk;28.2.13676358'
+      - name: Use existing GUO2 signing identity
+        env:
+          GUO2_KEYSTORE_BASE64: ${{ secrets.GUO2_KEYSTORE_BASE64 }}
+          GUO2_KEYSTORE_PASSWORD: ${{ secrets.GUO2_KEYSTORE_PASSWORD }}
+          GUO2_KEY_ALIAS: ${{ secrets.GUO2_KEY_ALIAS }}
+          GUO2_KEY_PASSWORD: ${{ secrets.GUO2_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ vars.GUO2_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in GUO2_KEYSTORE_BASE64 GUO2_KEYSTORE_PASSWORD GUO2_KEY_ALIAS GUO2_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+          jks="$RUNNER_TEMP/guo2-release.jks"
+          printf '%s' "$GUO2_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$jks"
+          test -s "$jks" || { echo "::error::GUO2 keystore is empty"; exit 1; }
+          keytool -list -v -keystore "$jks" -storepass "$GUO2_KEYSTORE_PASSWORD" -alias "$GUO2_KEY_ALIAS" > "$RUNNER_TEMP/guo2-cert.txt" || {
+            echo "::error::GUO2 key alias or keystore password is invalid"
+            exit 1
+          }
+          actual=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' "$RUNNER_TEMP/guo2-cert.txt" | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          [[ "$actual" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Could not determine GUO2 signing certificate SHA256"; exit 1; }
+          echo "GUO2 signing certificate SHA256: $actual" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$EXPECTED_CERT_SHA256" ]]; then
+            expected=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+            if [[ ! "$expected" =~ ^[0-9a-f]{64}$ || "$actual" != "$expected" ]]; then
+              echo "::error::GUO2 signing certificate does not match GUO2_CERT_SHA256"
+              exit 1
+            fi
+          else
+            echo "::warning::GUO2_CERT_SHA256 repository variable is not configured; signed APK will be checked against its keystore, but upgrade compatibility with an already installed APK is unverified"
+          fi
+          echo "::add-mask::$GUO2_KEYSTORE_PASSWORD"
+          echo "::add-mask::$GUO2_KEY_PASSWORD"
+          {
+            echo "ANDROID_KEYSTORE_PATH=$jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=$GUO2_KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$GUO2_KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$GUO2_KEY_PASSWORD"
+            echo "GUO2_SIGNING_CERT_SHA256=$actual"
+          } >> "$GITHUB_ENV"
+      - name: Build ARM64 and ARMv7 test APKs with custom providers
+        run: |
+          set -euo pipefail
+          python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a --sources native/sources_custom
+      - name: Verify release certificate (never accept debug signing)
+        env:
+          CERT_SHA256: ${{ vars.GUO2_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          expected="$GUO2_SIGNING_CERT_SHA256"
+          test -n "$expected" || { echo "::error::Missing computed GUO2 signer fingerprint"; exit 1; }
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -n1)
+          test -n "$apksigner"
+          shopt -s nullglob
+          apks=(dist/android/*.apk)
+          test "${#apks[@]}" -ge 2 || { echo "::error::Expected both APK ABIs"; exit 1; }
+          for apk in "${apks[@]}"; do
+            "$apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/cert-info.txt"
+            grep -iF "$expected" <(tr -d ':' < "$RUNNER_TEMP/cert-info.txt" | tr '[:upper:]' '[:lower:]') || {
+              echo "::error::Unexpected signing certificate on $apk"; exit 1;
+            }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guo2-provider-repair-signed-test-apks
+          path: dist/android/*.apk
+          retention-days: 7
+          if-no-files-found: error
