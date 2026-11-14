@@ -98,7 +98,7 @@ func(p *jableProvider)ResolveMedia(ctx context.Context,task core.Task)(core.Prov
  doc,err:=tvPage(p.host,ctx,page,jableBase+"/")
  if err!=nil{return core.ProviderMedia{},err}
  var script strings.Builder
- for _,node:=range tvNodes(doc,"script",""){script.WriteString(core.ProviderHTMLText(node));script.WriteByte('\n')}
+ for _,node:=range tvNodes(doc,"script",""){for child:=node.FirstChild;child!=nil;child=child.NextSibling{if child.Type==html.TextNode{script.WriteString(child.Data);script.WriteByte('\n')}}}
  match:=jableHLS.FindStringSubmatch(script.String())
  if len(match)<2{return core.ProviderMedia{},errors.New("Jable+ 未取得 hlsUrl，可能需要浏览器验证或播放脚本已变更")}
  address:=tvSafeURL(page,strings.ReplaceAll(match[1],`\/`, "/"))
