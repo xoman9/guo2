@@ -23,6 +23,7 @@ var jinguoID = regexp.MustCompile(`^[A-Za-z0-9]{1,64}$`)
 
 type jinguoRow struct {
 	core.Drama
+	ExtraCovers []any
 }
 
 func (row *jinguoRow) UnmarshalJSON(body []byte) error {
@@ -37,6 +38,18 @@ func (row *jinguoRow) UnmarshalJSON(body []byte) error {
 		return err
 	}
 	row.Drama = detail.Drama
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil { return err }
+	for _, key := range []string{"coverImage","coverImg","coverPath","cover_image","cover_img","cover_path","verticalCover","horizontalCover","playletCover","coverInfo","cover_info","coverList","posterUrl","poster_url","imageList"} {
+		if value, ok := raw[key]; ok { row.ExtraCovers = append(row.ExtraCovers, value) }
+	}
+	for _, key := range []string{"playlet","playletInfo","video","info"} {
+		if nested, ok := raw[key].(map[string]any); ok {
+			for _, name := range []string{"cover","coverUrl","coverImage","pic","poster","image","url"} {
+				if value, exists := nested[name]; exists { row.ExtraCovers = append(row.ExtraCovers, value) }
+			}
+		}
+	}
 	row.Drama.Tags = core.MapStringSlice(map[string]any{"tagNames": names.TagNames}, "tagNames")
 	return nil
 }
@@ -147,14 +160,15 @@ func (p *jinguoProvider) fetchJinguoList(ctx context.Context, route string, para
 	}
 	var items []core.Drama
 	for _, row := range result.List {
-		if drama, ok := jinguoDrama(row.Drama, tabName); ok {
+		if drama, ok := jinguoDrama(row, tabName); ok {
 			items = append(items, drama)
 		}
 	}
 	return items, len(result.List) >= max(1, jinguoPageSize), nil
 }
 
-func jinguoDrama(drama core.Drama, tabName string) (core.Drama, bool) {
+func jinguoDrama(row jinguoRow, tabName string) (core.Drama, bool) {
+	drama := row.Drama
 	if !jinguoID.MatchString(drama.ID) {
 		return core.Drama{}, false
 	}
@@ -163,6 +177,7 @@ func jinguoDrama(drama core.Drama, tabName string) (core.Drama, bool) {
 	drama.ChannelName = "禁果"
 	drama.CategoryName = core.FirstNonEmpty(drama.CategoryName, tabName)
 	covers := []any{drama.Cover, drama.CoverURL, drama.CoverURLSnake, drama.Image, drama.ImageURL, drama.ImageURLSnake, drama.Img, drama.Pic, drama.Picture, drama.Poster, drama.Thumb, drama.Thumbnail}
+	covers = append(covers, row.ExtraCovers...)
 	drama.Cover, drama.CoverURL = nil, nil
 	for _, cover := range covers {
 		if address := legacyCoverURL(cover); address != "" {
@@ -189,7 +204,7 @@ func (p *jinguoProvider) fetchJinguoDetail(ctx context.Context, sourceID string)
 	if json.Unmarshal(raw, &detail) != nil || json.Unmarshal(raw, &playable) != nil {
 		return core.Drama{}, nil, errors.New("禁果详情数据格式无效")
 	}
-	drama, ok := jinguoDrama(detail.Drama, "")
+	drama, ok := jinguoDrama(detail, "")
 	if !ok || drama.SourceID != sourceID {
 		return core.Drama{}, nil, errors.New("禁果详情与请求剧集不符")
 	}
