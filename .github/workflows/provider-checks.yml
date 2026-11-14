@@ -1,0 +1,36 @@
+name: Provider regression checks
+on:
+  pull_request:
+    paths:
+      - 'native/**'
+      - '.github/workflows/provider-checks.yml'
+  push:
+    branches:
+      - 'fix/jable-missav-jinguo-cover-20261114'
+    paths:
+      - 'native/**'
+      - '.github/workflows/provider-checks.yml'
+permissions:
+  contents: read
+jobs:
+  provider-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - name: Assemble local Go workspace
+        working-directory: native
+        run: go work init . ./sources_custom
+      - name: Test core source package
+        working-directory: native
+        run: go test -tags=zhenguojian ./sources ./core
+      - name: Test custom TVBox providers
+        working-directory: native
+        run: go test -tags=zhenguojian duanjuapp/native/sources_custom
+      - name: Go vet custom TVBox providers
+        working-directory: native
+        run: go vet -tags=zhenguojian duanjuapp/native/sources_custom
