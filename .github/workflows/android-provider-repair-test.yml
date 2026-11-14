@@ -26,11 +26,6 @@ jobs:
       ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/guoapp-sources
-          ssh-key: ${{ secrets.SOURCES_DEPLOY_KEY }}
-          path: guoapp-sources
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -67,7 +62,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a --sources guoapp-sources --sources native/sources_custom
+          python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a --sources native/sources_custom
       - name: Verify release certificate (never accept debug signing)
         env:
           CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
