@@ -1,0 +1,139 @@
+name: Build pristine guo2 upstream 1.0.9+109 public source APKs
+
+on:
+  push:
+    branches: [build/pristine-109-20261114]
+    paths:
+      - '.github/workflows/build-pristine-109-apks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pristine 109 and public-only source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx 'version: 1.0.9+109' pubspec.yaml
+          test -f native/sources_example/go.mod
+          test ! -e native/sources_legacy109
+          test ! -e native/sources_custom
+          test ! -e native/sources_missav
+          echo "Compiling exact public upstream 109 source. Private guoapp-sources are not available, so this build uses the upstream demo provider only." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+          accept-android-sdk-licenses: true
+      - name: Install required NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=28.2.13676358
+          if [ ! -f "$ANDROID_HOME/ndk/$version/source.properties" ]; then
+            sdkmanager --sdk_root="$ANDROID_HOME" "ndk;$version"
+          fi
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$version" >> "$GITHUB_ENV"
+      - name: Sign with existing 109 key if available, otherwise make a fresh build-only key
+        shell: bash
+        env:
+          Z_KEY: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
+          Z_STORE_PASS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          Z_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          Z_KEY_PASS: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+          A_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          A_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          A_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          A_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          jks="$RUNNER_TEMP/guo2-109.jks"
+          if [ -n "$Z_KEY" ] && [ -n "$Z_STORE_PASS" ] && [ -n "$Z_ALIAS" ] && [ -n "$Z_KEY_PASS" ]; then
+            printf '%s' "$Z_KEY" | tr -d '[:space:]' | base64 -d > "$jks"
+            storepass="$Z_STORE_PASS"; alias="$Z_ALIAS"; keypass="$Z_KEY_PASS"
+            echo "Using existing ZHENGUOJIAN signing identity" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$A_KEY" ] && [ -n "$A_STORE_PASS" ] && [ -n "$A_ALIAS" ] && [ -n "$A_KEY_PASS" ]; then
+            printf '%s' "$A_KEY" | tr -d '[:space:]' | base64 -d > "$jks"
+            storepass="$A_STORE_PASS"; alias="$A_ALIAS"; keypass="$A_KEY_PASS"
+            echo "Using existing ANDROID signing identity" >> "$GITHUB_STEP_SUMMARY"
+          else
+            storepass="$(openssl rand -hex 20)"
+            alias="guo2_109_build"
+            keypass="$storepass"
+            keytool -genkeypair -alias "$alias" -keystore "$jks" -storepass "$storepass" -keypass "$keypass" -keyalg RSA -keysize 3072 -validity 3650 -dname 'CN=guo2 109 build, OU=Local, O=Independent, C=TW' -noprompt
+            echo "WARNING: Fresh build-only signing identity, not compatible with existing installed signatures. No reusable key is exported." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          test -s "$jks"
+          echo "::add-mask::$storepass"
+          echo "::add-mask::$keypass"
+          echo "ANDROID_KEYSTORE_PATH=$jks" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$storepass" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$alias" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$keypass" >> "$GITHUB_ENV"
+      - name: Build upstream 109 unmodified public-core APKs for ARM64 and ARMv7
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The upstream public repository supplies only sources_example;
+          # do not pretend it contains the inaccessible private original channels.
+          python scripts/build_android.py --all-sources --sources native/sources_example --abi arm64-v8a --abi armeabi-v7a 2>&1 | tee "$RUNNER_TEMP/guo2-109-build.log"
+      - name: Verify artifact version, ABI and signed APK integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(dist/android/*arm64-v8a.apk dist/android/*armeabi-v7a.apk)
+          test "${#apks[@]}" -eq 2
+          signer=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)
+          aapt=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)
+          test -n "$signer" && test -n "$aapt"
+          mkdir -p verified
+          for apk in "${apks[@]}"; do
+            "$signer" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/guo2-109-apk-cert.txt"
+            "$aapt" dump badging "$apk" | grep -F "versionName='1.0.9'"
+            if [[ "$apk" == *arm64-v8a.apk ]]; then abi=arm64-v8a; else abi=armeabi-v7a; fi
+            unzip -Z1 "$apk" | grep -Fx "lib/$abi/libduanju_core.so"
+            cp "$apk" verified/
+          done
+          (cd verified && sha256sum *.apk > SHA256SUMS.txt)
+      - name: Keep both APKs only on GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: guo2-upstream-109-public-core-demo-sources-ARM64-v7a
+          path: verified/*
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guo2-109-public-build-failure
+          path: ${{ runner.temp }}/guo2-109-build.log
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Clean signing key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/guo2-109.jks" "$RUNNER_TEMP/guo2-109-apk-cert.txt"
