@@ -13,6 +13,7 @@ import '../app_scope.dart';
 import '../explore/explore_page.dart';
 import '../explore/source_actions.dart';
 import '../follow/follow_page.dart';
+import '../history/history_page.dart';
 import '../mine/mine_page.dart';
 import '../update_prompt.dart';
 import '../widgets/bar_button.dart';
@@ -24,6 +25,7 @@ import '../widgets/source_bar.dart';
 enum AppTab {
   explore('发现', Icons.explore_outlined, Icons.explore),
   follow('追剧', Icons.bookmark_border_rounded, Icons.bookmark_rounded),
+  history('历史', Icons.history_rounded, Icons.history_rounded),
   mine('我的', Icons.person_outline_rounded, Icons.person_rounded);
 
   const AppTab(this.label, this.icon, this.selectedIcon);
@@ -40,6 +42,25 @@ Future<T?> openPage<T>(BuildContext context, WidgetBuilder builder) =>
         FormFactor.pad || FormFactor.window => false,
       },
     ).push(MaterialPageRoute<T>(builder: builder));
+
+class ShellForeground extends InheritedWidget {
+  const ShellForeground({
+    super.key,
+    required this.foreground,
+    required super.child,
+  });
+  final bool foreground;
+
+  static bool of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<ShellForeground>()
+          ?.foreground ??
+      true;
+
+  @override
+  bool updateShouldNotify(ShellForeground oldWidget) =>
+      foreground != oldWidget.foreground;
+}
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.store});
@@ -125,6 +146,13 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
+  List<AppTab> get _tabs => [
+    for (final tab in AppTab.values)
+      if (tab != AppTab.history ||
+          widget.store.historyTab && !AppScope.of(context).television)
+        tab,
+  ];
+
   void _select(AppTab tab) => setState(() => _tab = tab);
 
   void _tap(AppTab tab) {
@@ -206,6 +234,7 @@ class _AppShellState extends State<AppShell> {
       entryFocus: _followEntry,
       onExitUp: _tabFocus[AppTab.follow.index].requestFocus,
     ),
+    AppTab.history => HistoryPage(store: widget.store, root: true),
     AppTab.mine => MinePage(
       store: widget.store,
       downloads: _downloads!,
@@ -218,7 +247,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = NotificationListener<NavigationNotification>(
+    final stack = NotificationListener<NavigationNotification>(
       onNotification: (_) {
         setState(() {});
         return false;
@@ -250,7 +279,13 @@ class _AppShellState extends State<AppShell> {
         ],
       ),
     );
+    final pages = ShellForeground(
+      foreground: ModalRoute.of(context)?.isCurrent ?? true,
+      child: stack,
+    );
     final television = AppScope.of(context).television;
+    final tabs = _tabs;
+    if (!tabs.contains(_tab)) _tab = AppTab.explore;
     final covered = _navigator?.canPop() ?? false;
     return PopScope(
       canPop:
@@ -267,10 +302,10 @@ class _AppShellState extends State<AppShell> {
           bottomNavigationBar: covered
               ? null
               : NavigationBar(
-                  selectedIndex: _tab.index,
-                  onDestinationSelected: (index) => _tap(AppTab.values[index]),
+                  selectedIndex: tabs.indexOf(_tab),
+                  onDestinationSelected: (index) => _tap(tabs[index]),
                   destinations: [
-                    for (final tab in AppTab.values)
+                    for (final tab in tabs)
                       NavigationDestination(
                         key: ValueKey('nav-${tab.name}'),
                         icon: _badged(tab, Icon(tab.icon)),
@@ -303,7 +338,7 @@ class _AppShellState extends State<AppShell> {
                         final entry = switch (_tab) {
                           AppTab.follow => _followEntry,
                           AppTab.mine => _mineEntry,
-                          AppTab.explore => null,
+                          AppTab.explore || AppTab.history => null,
                         };
                         if (event is KeyUpEvent ||
                             event.logicalKey != LogicalKeyboardKey.arrowDown ||
@@ -334,7 +369,7 @@ class _AppShellState extends State<AppShell> {
       key: _televisionTabs,
       spacing: 6,
       children: [
-        for (final tab in AppTab.values)
+        for (final tab in _tabs)
           _TelevisionTab(
             tab: tab,
             selected: tab == _tab,
@@ -365,6 +400,7 @@ class _AppShellState extends State<AppShell> {
       body: Row(
         children: [
           _SideBar(
+            tabs: _tabs,
             selected: _tab,
             expanded: expanded,
             badged: _badged,
@@ -441,12 +477,14 @@ class _TabFade extends StatelessWidget {
 
 class _SideBar extends StatefulWidget {
   const _SideBar({
+    required this.tabs,
     required this.selected,
     required this.expanded,
     required this.badged,
     required this.onSelect,
     this.onToggle,
   });
+  final List<AppTab> tabs;
   final AppTab selected;
   final bool expanded;
   final Widget Function(AppTab tab, Widget icon) badged;
@@ -512,7 +550,7 @@ class _SideBarState extends State<_SideBar> {
                     ),
                   ),
                 ),
-                for (final tab in AppTab.values)
+                for (final tab in widget.tabs)
                   _SideItem(
                     tab: tab,
                     selected: tab == widget.selected,
