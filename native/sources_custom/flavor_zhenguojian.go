@@ -2,7 +2,10 @@
 
 package custom
 
-import "duanjuapp/native/core"
+import (
+ "duanjuapp/native/core"
+ _ "duanjuapp/native/sources"
+)
 
 func init() {
  core.RegisterFlavor("zhenguojian", []string{
