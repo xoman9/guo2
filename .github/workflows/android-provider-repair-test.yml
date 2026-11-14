@@ -1,0 +1,94 @@
+name: Android provider repair APK test
+on:
+  push:
+    branches:
+      - fix/jable-missav-jinguo-cover-20261114
+    paths:
+      - 'native/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - '.github/workflows/android-provider-repair-test.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: provider-repair-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+      ZHENGUOJIAN_PACKAGE_NAME: ${{ vars.ZHENGUOJIAN_PACKAGE_NAME }}
+      ZHENGUOJIAN_DISPLAY_NAME: ${{ vars.ZHENGUOJIAN_DISPLAY_NAME }}
+      ZHENGUOJIAN_LATIN_NAME: ${{ vars.ZHENGUOJIAN_LATIN_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/guoapp-sources
+          ssh-key: ${{ secrets.SOURCES_DEPLOY_KEY }}
+          path: guoapp-sources
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: native/go.mod
+          cache-dependency-path: native/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36'
+          accept-android-sdk-licenses: true
+      - run: sdkmanager 'ndk;28.2.13676358'
+      - name: Require existing permanent signing identity
+        env:
+          KEYSTORE: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE" || { echo "::error::Missing permanent signing keystore"; exit 1; }
+          printf '%s' "$KEYSTORE" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Build ARM64 and ARMv7 test APKs with custom providers
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a --sources guoapp-sources --sources native/sources_custom
+      - name: Verify release certificate (never accept debug signing)
+        env:
+          CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          expected=$(printf '%s' "$CERT_SHA256" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
+          test -n "$expected" || { echo "::error::Missing expected signing fingerprint"; exit 1; }
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -n1)
+          test -n "$apksigner"
+          shopt -s nullglob
+          apks=(dist/android/*.apk)
+          test "${#apks[@]}" -ge 2 || { echo "::error::Expected both APK ABIs"; exit 1; }
+          for apk in "${apks[@]}"; do
+            "$apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/cert-info.txt"
+            grep -iF "$expected" <(tr -d ':' < "$RUNNER_TEMP/cert-info.txt" | tr '[:upper:]' '[:lower:]') || {
+              echo "::error::Unexpected signing certificate on $apk"; exit 1;
+            }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guo2-provider-repair-signed-test-apks
+          path: dist/android/*.apk
+          retention-days: 7
+          if-no-files-found: error
