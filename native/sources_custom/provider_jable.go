@@ -16,7 +16,7 @@ const jableSource="jable"
 const jableBase="https://jable.tv"
 var jableID=regexp.MustCompile(`^[A-Za-z0-9_-]{1,120}$`)
 var jableHLS=regexp.MustCompile(`(?i)\bhlsUrl\s*[:=]\s*["']([^"']+)["']`)
-var jableDesc=core.SourceDescriptor{ID:jableSource,Name:"Jable+",BaseURL:jableBase,DefaultOff:true,NoHostRotation:true,Description:"TVBox csp_Jable HTML解析；网站验证须由用户完成",ValidCategory:func(s string)bool{return s==""||jableID.MatchString(s)}}
+var jableDesc=core.SourceDescriptor{ID:jableSource,Name:"Jable+",BaseURL:jableBase,DefaultOff:true,NoHostRotation:true,BrowserFingerprint:true,Description:"TVBox csp_Jable HTML解析；网站验证须由用户完成",ValidCategory:func(s string)bool{return s==""||jableID.MatchString(s)}}
 type jableProvider struct{host core.Host}
 var _ core.Provider=(*jableProvider)(nil)
 var _ core.Searcher=(*jableProvider)(nil)
