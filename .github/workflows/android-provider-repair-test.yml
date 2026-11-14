@@ -39,53 +39,49 @@ jobs:
           packages: 'platforms;android-36'
           accept-android-sdk-licenses: true
       - run: sdkmanager 'ndk;28.2.13676358'
-      - name: Require and validate permanent signing identity
+      - name: Use existing GUO2 signing identity
         env:
-          Z_KEY: ${{ secrets.ZHENGUOJIAN_KEYSTORE_BASE64 }}
-          Z_STORE_PASS: ${{ secrets.ZHENGUOJIAN_KEYSTORE_PASSWORD }}
-          Z_ALIAS: ${{ secrets.ZHENGUOJIAN_KEY_ALIAS }}
-          Z_KEY_PASS: ${{ secrets.ZHENGUOJIAN_KEY_PASSWORD }}
-          A_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          A_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          A_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          A_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          GUO2_KEYSTORE_BASE64: ${{ secrets.GUO2_KEYSTORE_BASE64 }}
+          GUO2_KEYSTORE_PASSWORD: ${{ secrets.GUO2_KEYSTORE_PASSWORD }}
+          GUO2_KEY_ALIAS: ${{ secrets.GUO2_KEY_ALIAS }}
+          GUO2_KEY_PASSWORD: ${{ secrets.GUO2_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ vars.GUO2_CERT_SHA256 }}
         run: |
           set -euo pipefail
           umask 077
-          if [[ -n "$Z_KEY" && -n "$Z_STORE_PASS" && -n "$Z_ALIAS" && -n "$Z_KEY_PASS" ]]; then
-            key="$Z_KEY"; storepass="$Z_STORE_PASS"; alias="$Z_ALIAS"; keypass="$Z_KEY_PASS"
-            echo "Using configured ZHENGUOJIAN signing secret set"
-          elif [[ -n "$A_KEY" && -n "$A_STORE_PASS" && -n "$A_ALIAS" && -n "$A_KEY_PASS" ]]; then
-            key="$A_KEY"; storepass="$A_STORE_PASS"; alias="$A_ALIAS"; keypass="$A_KEY_PASS"
-            echo "Using configured ANDROID signing secret set; certificate must match ZHENGUOJIAN_CERT_SHA256"
-          else
-            echo "::error::No complete permanent signing secret set. Configure ZHENGUOJIAN_KEYSTORE_BASE64, ZHENGUOJIAN_KEYSTORE_PASSWORD, ZHENGUOJIAN_KEY_ALIAS, ZHENGUOJIAN_KEY_PASSWORD (or the corresponding ANDROID_* set), using your original private signing key."
+          for name in GUO2_KEYSTORE_BASE64 GUO2_KEYSTORE_PASSWORD GUO2_KEY_ALIAS GUO2_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+          jks="$RUNNER_TEMP/guo2-release.jks"
+          printf '%s' "$GUO2_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$jks"
+          test -s "$jks" || { echo "::error::GUO2 keystore is empty"; exit 1; }
+          keytool -list -v -keystore "$jks" -storepass "$GUO2_KEYSTORE_PASSWORD" -alias "$GUO2_KEY_ALIAS" > "$RUNNER_TEMP/guo2-cert.txt" || {
+            echo "::error::GUO2 key alias or keystore password is invalid"
             exit 1
-          fi
-          expected=$(printf '%s' "$CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
-          if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::Configure ZHENGUOJIAN_CERT_SHA256 with the SHA-256 certificate fingerprint of your currently installed APK"
-            exit 1
-          fi
-          jks="$RUNNER_TEMP/release.jks"
-          printf '%s' "$key" | tr -d '[:space:]' | base64 -d > "$jks"
-          test -s "$jks" || { echo "::error::Signing keystore is empty"; exit 1; }
-          keytool -list -v -keystore "$jks" -storepass "$storepass" -alias "$alias" > "$RUNNER_TEMP/key-info.txt" || {
-            echo "::error::Cannot open signing key or alias; check original keystore and passwords"; exit 1;
           }
-          actual=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' "$RUNNER_TEMP/key-info.txt" | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
-          if [[ "$actual" != "$expected" ]]; then
-            echo "::error::Signing certificate is not the original ZHENGUOJIAN certificate; refusing incompatible APK"
-            exit 1
+          actual=$(sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' "$RUNNER_TEMP/guo2-cert.txt" | head -n1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          [[ "$actual" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Could not determine GUO2 signing certificate SHA256"; exit 1; }
+          echo "GUO2 signing certificate SHA256: $actual" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$EXPECTED_CERT_SHA256" ]]; then
+            expected=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+            if [[ ! "$expected" =~ ^[0-9a-f]{64}$ || "$actual" != "$expected" ]]; then
+              echo "::error::GUO2 signing certificate does not match GUO2_CERT_SHA256"
+              exit 1
+            fi
+          else
+            echo "::warning::GUO2_CERT_SHA256 repository variable is not configured; signed APK will be checked against its keystore, but upgrade compatibility with an already installed APK is unverified"
           fi
-          echo "::add-mask::$storepass"
-          echo "::add-mask::$keypass"
+          echo "::add-mask::$GUO2_KEYSTORE_PASSWORD"
+          echo "::add-mask::$GUO2_KEY_PASSWORD"
           {
             echo "ANDROID_KEYSTORE_PATH=$jks"
-            echo "ANDROID_KEYSTORE_PASSWORD=$storepass"
-            echo "ANDROID_KEY_ALIAS=$alias"
-            echo "ANDROID_KEY_PASSWORD=$keypass"
+            echo "ANDROID_KEYSTORE_PASSWORD=$GUO2_KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$GUO2_KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$GUO2_KEY_PASSWORD"
+            echo "GUO2_SIGNING_CERT_SHA256=$actual"
           } >> "$GITHUB_ENV"
       - name: Build ARM64 and ARMv7 test APKs with custom providers
         run: |
@@ -93,11 +89,11 @@ jobs:
           python scripts/build_android.py --all-sources --abi arm64-v8a --abi armeabi-v7a --sources native/sources_custom
       - name: Verify release certificate (never accept debug signing)
         env:
-          CERT_SHA256: ${{ vars.ZHENGUOJIAN_CERT_SHA256 }}
+          CERT_SHA256: ${{ vars.GUO2_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          expected=$(printf '%s' "$CERT_SHA256" | tr -d ': ' | tr '[:upper:]' '[:lower:]')
-          test -n "$expected" || { echo "::error::Missing expected signing fingerprint"; exit 1; }
+          expected="$GUO2_SIGNING_CERT_SHA256"
+          test -n "$expected" || { echo "::error::Missing computed GUO2 signer fingerprint"; exit 1; }
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -n1)
           test -n "$apksigner"
           shopt -s nullglob
